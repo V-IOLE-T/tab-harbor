@@ -6,6 +6,27 @@
     return orderIds.map(id => String(id)).filter(Boolean);
   }
 
+  function createReorderedIds(currentIds, draggedId, targetId, placeAfter = false) {
+    const ids = normalizeOrderIds(currentIds);
+    if (!draggedId || !targetId || draggedId === targetId) return ids;
+
+    const draggedKey = String(draggedId);
+    const targetKey = String(targetId);
+    const draggedIndex = ids.indexOf(draggedKey);
+    const targetIndex = ids.indexOf(targetKey);
+    if (draggedIndex === -1 || targetIndex === -1) return ids;
+
+    const nextIds = ids.slice();
+    nextIds.splice(draggedIndex, 1);
+
+    const insertIndex = placeAfter
+      ? targetIndex > draggedIndex ? targetIndex : targetIndex + 1
+      : targetIndex < draggedIndex ? targetIndex : targetIndex - 1;
+
+    nextIds.splice(Math.max(0, insertIndex), 0, draggedKey);
+    return nextIds;
+  }
+
   function reorderSubsetByIds(items, orderIds, includeItem) {
     if (!Array.isArray(items)) return [];
 
@@ -30,6 +51,7 @@
   }
 
   const api = {
+    createReorderedIds,
     normalizeOrderIds,
     reorderSubsetByIds,
   };

@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tab Harbor</title>
 
-  <!-- Google Fonts: Newsreader (for headings/numbers) + DM Sans (for body text) -->
+  <!-- Google Fonts: Libre Caslon Display (editorial display) + Public Sans (UI body) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -87,16 +87,13 @@
   </div><!-- end .dashboard-columns -->
 
   <div class="drawer-trigger-stack" id="drawerTriggerStack">
-    <button class="deferred-trigger" id="deferredTrigger" style="display:none" aria-expanded="false" aria-controls="drawerColumn" aria-label="Open saved for later">
-      <svg class="deferred-trigger-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
-        <path d="M834.395 794.9l-641.007-0.482c-32.62-7.826-40.406-33.283-40.009-46.142v-450.978h34.777v451.776c0.122 2.525 1.589 8.101 11.55 11.049h634.378c5.313-0.359 8.542-3.891 9.605-10.505v-452.32h34.777v454.617l-0.133 1.074c-4.147 33.154-30.552 41.91-43.937 41.91z" fill="currentColor" />
-        <path d="M878.837 743.877h-34.777v-451.801c-0.086-1.749-1.161-11.043-13.996-19.291h-628.449c-3.891 2.16-11.335 7.658-13.087 18.761v452.328h-34.773v-454.615l0.133-1.074c3.683-29.471 25.702-44.779 38.131-49.177l2.816-0.996h644.313l3.858 2.071c29.159 15.671 36.23 40.301 35.837 52.816l-0.005 450.978z" fill="currentColor" />
-        <path d="M641.116 541.753l217.78 220.196-24.724 24.454-217.78-220.197 24.724-24.454zM388.924 540.545l25.045 24.127-213.471 221.593-25.046-24.127 213.471-221.593z" fill="currentColor" />
-        <path d="M504.989 654.358l-338.808-265.775 21.463-27.362 317.919 249.388c63.788-47.376 326.787-242.648 338-250.16l19.346 28.896c-9.98 6.712-254.061 187.857-347.267 257.093l-10.654 7.919z" fill="currentColor" />
+    <button class="deferred-trigger" id="deferredTrigger" type="button" style="display:none" aria-expanded="false" aria-controls="drawerColumn" aria-label="Open saved for later">
+      <svg class="deferred-trigger-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.9" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75v13.22a.53.53 0 0 1-.822.443L12 17.348l-4.428 3.065a.53.53 0 0 1-.822-.442V6.75A2.25 2.25 0 0 1 9 4.5h6a2.25 2.25 0 0 1 2.25 2.25Z" />
       </svg>
     </button>
 
-    <button class="deferred-trigger todo-trigger" id="todoTrigger" aria-expanded="false" aria-controls="drawerColumn" aria-label="Open todos">
+    <button class="deferred-trigger todo-trigger" id="todoTrigger" type="button" aria-expanded="false" aria-controls="drawerColumn" aria-label="Open todos">
       <svg class="deferred-trigger-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
         <path d="M288.384 173.488a94.208 94.208 0 0 1 93.392-81.488H646.24a94.208 94.208 0 0 1 93.376 81.488h62.176A94.16 94.16 0 0 1 896 267.568V584a32 32 0 1 1-64 0V267.584c0-16.56-13.472-30.08-30.224-30.08H738.24a94.24 94.24 0 0 1-92.016 73.712H381.76a94.24 94.24 0 0 1-92-73.728h-63.552a30.16 30.16 0 0 0-30.224 30.08V841.92c0 16.56 13.472 30.096 30.224 30.096H516a32 32 0 1 1 0 64H226.224a94.16 94.16 0 0 1-94.224-94.08V267.568c0-52.032 42.24-94.08 94.224-94.08h62.176z m93.392-17.488a30.16 30.16 0 0 0-30.224 30.08v31.04c0 16.56 13.472 30.096 30.24 30.096h264.432a30.16 30.16 0 0 0 30.224-30.08v-31.04c0-16.56-13.472-30.096-30.24-30.096H381.792z" fill="currentColor" />
         <path d="M472 444a32 32 0 0 1 32-32h236a32 32 0 1 1 0 64H504a32 32 0 0 1-32-32zM472 668a32 32 0 0 1 32-32h192a32 32 0 1 1 0 64h-192a32 32 0 0 1-32-32zM268 396a32 32 0 0 1 32-32h96a32 32 0 0 1 32 32v96a32 32 0 0 1-32 32h-96a32 32 0 0 1-32-32v-96z m64 32v32h32v-32h-32zM268 624a32 32 0 0 1 32-32h96a32 32 0 0 1 32 32v96a32 32 0 0 1-32 32h-96a32 32 0 0 1-32-32v-96z m64 32v32h32v-32h-32zM926.624 660.752a32 32 0 0 1 0 45.248L719.216 913.424a64 64 0 0 1-90.512 0l-85.328-85.344a32 32 0 1 1 45.248-45.248l85.328 85.328 207.424-207.408a32 32 0 0 1 45.248 0z" fill="currentColor" />
@@ -107,28 +104,28 @@
   <div class="deferred-overlay" id="deferredOverlay" hidden></div>
 
   <!-- RIGHT COLUMN: Drawer -->
-  <aside class="deferred-column" id="drawerColumn" style="display:none" aria-hidden="true">
+  <aside class="deferred-column" id="drawerColumn" style="display:none" aria-hidden="true" role="dialog" aria-modal="false" aria-label="Saved items and todos" tabindex="-1">
     <div class="deferred-shell">
-      <section class="drawer-panel is-active" id="savedPanel">
+      <section class="drawer-panel is-active" id="savedPanel" role="tabpanel" aria-label="Saved for later" tabindex="-1">
         <div class="section-header deferred-header">
-          <div class="drawer-title-switch">
-            <button class="drawer-title-btn is-active" data-action="switch-drawer-view" data-view="saved">Saved for later</button>
-            <button class="drawer-title-btn" data-action="switch-drawer-view" data-view="todos">Todos</button>
+          <div class="drawer-title-switch" role="tablist" aria-label="Drawer views">
+            <button class="drawer-title-btn is-active" id="savedPanelTab" type="button" role="tab" aria-selected="true" aria-controls="savedPanel" data-action="switch-drawer-view" data-view="saved">Saved for later</button>
+            <button class="drawer-title-btn" id="todoPanelTab" type="button" role="tab" aria-selected="false" aria-controls="todoPanel" data-action="switch-drawer-view" data-view="todos">Todos</button>
           </div>
           <div class="section-line"></div>
           <div class="section-count" id="deferredCount"></div>
           <div class="drawer-header-actions">
-            <button class="drawer-icon-btn" id="savedSearchToggle" data-action="toggle-saved-search" aria-label="Search saved for later">
+            <button class="drawer-icon-btn" id="savedSearchToggle" type="button" data-action="toggle-saved-search" aria-label="Search saved for later" aria-expanded="false" aria-controls="savedSearchWrap">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.6-5.4a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
             </button>
-            <button class="drawer-icon-btn" id="deferredCloseBtn" aria-label="Close right drawer">
+            <button class="drawer-icon-btn" id="deferredCloseBtn" type="button" aria-label="Close right drawer">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
 
         <div class="saved-search-wrap" id="savedSearchWrap" style="display:none">
-          <input type="text" class="archive-search" id="savedSearchInput" placeholder="Search saved pages...">
+          <input type="search" class="archive-search" id="savedSearchInput" placeholder="Search saved pages..." aria-label="Search saved pages">
         </div>
 
         <!-- Active checklist items — injected by renderDeferredList() in app.js -->
@@ -136,62 +133,62 @@
 
         <!-- Empty state — shown when no active deferred tabs -->
         <div class="deferred-empty" id="deferredEmpty" style="display:none">
-          Nothing saved. Living in the moment.
+          Nothing saved yet. Park articles and tabs here when they matter, just not right now.
         </div>
 
         <!-- Archive section — collapsed by default -->
         <div class="deferred-archive" id="deferredArchive" style="display:none">
           <div class="archive-header-row">
-            <button class="archive-toggle" id="archiveToggle">
+            <button class="archive-toggle" id="archiveToggle" type="button" aria-expanded="false" aria-controls="archiveBody">
               <svg class="archive-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
               Archive
               <span class="archive-count" id="archiveCount"></span>
             </button>
-            <button class="archive-clear-btn" id="clearArchiveBtn" data-action="clear-archive">Clear archive</button>
+            <button class="archive-clear-btn" id="clearArchiveBtn" type="button" data-action="clear-archive">Clear archive</button>
           </div>
-          <div class="archive-body" id="archiveBody" style="display:none">
+          <div class="archive-body" id="archiveBody" style="display:none" hidden>
             <div class="archive-list" id="archiveList"></div>
           </div>
         </div>
       </section>
 
-      <section class="drawer-panel" id="todoPanel">
+      <section class="drawer-panel" id="todoPanel" role="tabpanel" aria-label="Todos" tabindex="-1">
         <div class="section-header deferred-header todo-header">
-          <div class="drawer-title-switch">
-            <button class="drawer-title-btn" data-action="switch-drawer-view" data-view="saved">Saved for later</button>
-            <button class="drawer-title-btn is-active" data-action="switch-drawer-view" data-view="todos">Todos</button>
+          <div class="drawer-title-switch" role="tablist" aria-label="Drawer views">
+            <button class="drawer-title-btn" type="button" role="tab" aria-selected="false" aria-controls="savedPanel" data-action="switch-drawer-view" data-view="saved">Saved for later</button>
+            <button class="drawer-title-btn is-active" type="button" role="tab" aria-selected="true" aria-controls="todoPanel" data-action="switch-drawer-view" data-view="todos">Todos</button>
           </div>
           <div class="section-line"></div>
           <div class="section-count" id="todoCount">0</div>
           <div class="drawer-header-actions todo-header-actions">
-            <button class="drawer-icon-btn" id="todoSearchToggle" data-action="toggle-todo-search" aria-label="Search todos">
+            <button class="drawer-icon-btn" id="todoSearchToggle" type="button" data-action="toggle-todo-search" aria-label="Search todos" aria-expanded="false" aria-controls="todoSearchWrap">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.6-5.4a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
             </button>
-            <button class="drawer-icon-btn todo-plus-btn" id="todoNewBtn" data-action="create-todo" aria-label="New todo">+</button>
-            <button class="drawer-icon-btn" data-action="close-drawer" aria-label="Close right drawer">
+            <button class="drawer-icon-btn todo-plus-btn" id="todoNewBtn" type="button" data-action="create-todo" aria-label="New todo">+</button>
+            <button class="drawer-icon-btn" type="button" data-action="close-drawer" aria-label="Close right drawer">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
 
         <div class="todo-search-wrap" id="todoSearchWrap" style="display:none">
-          <input type="text" class="archive-search" id="todoSearchInput" placeholder="Search todos...">
+          <input type="search" class="archive-search" id="todoSearchInput" placeholder="Search todos..." aria-label="Search todos">
         </div>
 
         <div class="todo-detail-view" id="todoDetailView" style="display:none"></div>
         <div class="todo-list" id="todoList"></div>
-        <div class="deferred-empty" id="todoEmpty" style="display:none">No todos yet.</div>
+        <div class="deferred-empty" id="todoEmpty" style="display:none">No tasks yet. Capture the next step when something needs a follow-up.</div>
 
         <div class="deferred-archive" id="todoArchive" style="display:none">
           <div class="archive-header-row">
-            <button class="archive-toggle" id="todoArchiveToggle">
+            <button class="archive-toggle" id="todoArchiveToggle" type="button" aria-expanded="false" aria-controls="todoArchiveBody">
               <svg class="archive-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
               Archive
               <span class="archive-count" id="todoArchiveCount"></span>
             </button>
-            <button class="archive-clear-btn" id="clearTodoArchiveBtn" data-action="clear-todo-archive">Clear archive</button>
+            <button class="archive-clear-btn" id="clearTodoArchiveBtn" type="button" data-action="clear-todo-archive">Clear archive</button>
           </div>
-          <div class="archive-body" id="todoArchiveBody" style="display:none">
+          <div class="archive-body" id="todoArchiveBody" style="display:none" hidden>
             <div class="archive-list" id="todoArchiveList"></div>
           </div>
         </div>
@@ -228,7 +225,77 @@
   <span id="toastText"></span>
 </div>
 
-<button class="back-to-top" id="backToTopBtn" aria-label="Back to top" title="Back to top">
+<div class="shortcut-editor-backdrop" id="shortcutEditorBackdrop" hidden></div>
+<div class="shortcut-editor" id="shortcutEditor" hidden role="dialog" aria-modal="true" aria-labelledby="shortcutEditorTitle">
+  <form class="shortcut-editor-form" id="shortcutEditorForm">
+    <div class="shortcut-editor-header">
+      <div>
+        <h2 class="shortcut-editor-title" id="shortcutEditorTitle">Edit shortcut</h2>
+      </div>
+      <button class="shortcut-editor-close" type="button" data-action="close-shortcut-editor" aria-label="Close shortcut editor">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <label class="shortcut-editor-field">
+      <span class="shortcut-editor-label">URL</span>
+      <input class="shortcut-editor-input" id="shortcutEditorUrl" name="url" type="url" placeholder="https://example.com" required>
+    </label>
+
+    <label class="shortcut-editor-field">
+      <span class="shortcut-editor-label">Label</span>
+      <input class="shortcut-editor-input" id="shortcutEditorLabel" name="label" type="text" placeholder="Optional shortcut label">
+    </label>
+
+    <div class="shortcut-editor-section">
+      <div class="shortcut-editor-source-row">
+        <div class="shortcut-editor-preview" id="shortcutEditorPreview" tabindex="0" aria-label="Shortcut icon preview and paste target">
+          <span class="shortcut-editor-preview-fallback" id="shortcutEditorPreviewFallback">A</span>
+        </div>
+        <div class="shortcut-editor-source-segments" id="shortcutEditorSource" role="tablist" aria-label="Shortcut icon source">
+          <button class="shortcut-editor-source-chip" type="button" data-action="select-shortcut-source" data-source="site" aria-pressed="true">Website</button>
+          <button class="shortcut-editor-source-chip" type="button" data-action="select-shortcut-source" data-source="glyph" aria-pressed="false">Emoji</button>
+          <button class="shortcut-editor-source-chip" type="button" data-action="select-shortcut-source" data-source="image" aria-pressed="false">Image</button>
+          <button class="shortcut-editor-source-chip" type="button" data-action="select-shortcut-source" data-source="svg" aria-pressed="false">SVG</button>
+        </div>
+      </div>
+
+      <div class="shortcut-editor-mode-stage">
+        <div class="shortcut-editor-mode-group" id="shortcutEditorSiteGroup"></div>
+
+        <div class="shortcut-editor-field shortcut-editor-mode-group" id="shortcutEditorEmojiGroup">
+          <label class="shortcut-editor-inline-field" for="shortcutEditorEmoji">
+            <span class="shortcut-editor-label">Emoji</span>
+            <input class="shortcut-editor-input shortcut-editor-emoji-input" id="shortcutEditorEmoji" name="emoji" type="text" inputmode="text" placeholder="✨" maxlength="4">
+          </label>
+        </div>
+
+        <div class="shortcut-editor-mode-group" id="shortcutEditorImageGroup">
+          <div class="shortcut-editor-actions-row">
+            <button class="theme-menu-action" type="button" data-action="upload-shortcut-icon">Upload image</button>
+          </div>
+          <div class="shortcut-editor-mode-note">Paste an image with Cmd/Ctrl+V while the editor is focused.</div>
+        </div>
+
+        <label class="shortcut-editor-field shortcut-editor-mode-group" id="shortcutEditorSvgGroup">
+          <span class="shortcut-editor-label">SVG code</span>
+          <textarea class="shortcut-editor-input shortcut-editor-textarea" id="shortcutEditorSvgCode" name="svgCode" rows="4" placeholder="<svg ...>...</svg>"></textarea>
+        </label>
+      </div>
+
+      <input type="file" id="shortcutIconFileInput" accept="image/*" hidden>
+    </div>
+
+    <div class="shortcut-editor-footer">
+      <button class="theme-menu-action is-secondary" type="button" data-action="close-shortcut-editor">Cancel</button>
+      <button class="theme-menu-action" type="submit">Save</button>
+    </div>
+  </form>
+</div>
+
+<button class="back-to-top" id="backToTopBtn" type="button" aria-label="Back to top" title="Back to top">
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
   </svg>
@@ -246,6 +313,10 @@
 <script src="todos-store.js"></script>
 <script src="list-order.js"></script>
 <script src="background-image.js"></script>
+<script src="ui-helpers.js"></script>
+<script src="theme-controls.js"></script>
+<script src="drawer-manager.js"></script>
+<script src="dashboard-runtime.js"></script>
 
 <!-- Main dashboard logic — loads last so the DOM is ready -->
 <script src="app.js"></script>
