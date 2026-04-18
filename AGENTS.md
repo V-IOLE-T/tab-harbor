@@ -18,6 +18,14 @@ This file captures project-level design and implementation constraints for agent
 4. Compact controls still need comfortable hit targets.
 5. Theme changes must update the full environment, not just local controls.
 
+## Interaction Lessons
+
+1. Floating editors triggered from compact controls should anchor near the triggering element when practical; default corner placement is only a fallback.
+2. For dense icon reordering, prefer explicit grid tracks over `flex-wrap` when cross-row drag behavior matters.
+3. For icon drag-and-drop previews, use `ghost + slot` instead of converting the original node to `position: fixed`; keep the dragged visual under the pointer and the layout slot in the flow.
+4. Drag preview hit-testing should be based on stable slot positions captured at drag start, not on the currently reflowing DOM alone.
+5. FLIP animations in reorderable icon strips should only run for nodes whose order actually changed; avoid re-animating unaffected siblings.
+
 ## Frontend Architecture
 
 1. This project is plain HTML, CSS, and ordered `<script>` tags with no bundler or ESM module system.
