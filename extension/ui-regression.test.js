@@ -385,6 +385,16 @@ test('quick shortcuts support drag reordering with persisted order and drag prev
   assert.match(css, /\.quick-shortcut-slot\s*\{[\s\S]*width:\s*76px;[\s\S]*min-height:\s*56px;[\s\S]*pointer-events:\s*none;/);
 });
 
+test('quick shortcut add flows keep toast actions clickable and avoid stale duplicate state', () => {
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+
+  assert.match(css, /\.toast\.visible\s*\{[\s\S]*pointer-events:\s*auto;/);
+  assert.match(themeJs, /async function removeQuickShortcutById\(shortcutId\)\s*\{/);
+  assert.match(themeJs, /showToast\('Tab added — undo\?',\s*\{[\s\S]*await removeQuickShortcutById\(nextShortcut\.id\);[\s\S]*await renderQuickShortcuts\(\);[\s\S]*\}\s*,?\s*\}\s*\);/);
+  assert.match(themeJs, /const existingUrls = new Set\(shortcuts\.map\(s => s\.url\)\);[\s\S]*const shortcutUrl = tab\.url \|\| '';/);
+  assert.match(themeJs, /if \(existingUrls\.has\(shortcutUrl\)\) continue;[\s\S]*newShortcuts\.push\(\{[\s\S]*url: shortcutUrl,[\s\S]*\}\);[\s\S]*existingUrls\.add\(shortcutUrl\);/);
+});
+
 test('collapsed drawer triggers use compact neutral frames with theme-ready tokens', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 

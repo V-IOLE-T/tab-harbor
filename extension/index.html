@@ -223,6 +223,7 @@
     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
   </svg>
   <span id="toastText"></span>
+  <button class="toast-action" id="toastAction" type="button" hidden></button>
 </div>
 
 <div class="shortcut-editor-backdrop" id="shortcutEditorBackdrop" hidden></div>
@@ -293,6 +294,36 @@
       <button class="theme-menu-action" type="submit">Save</button>
     </div>
   </form>
+</div>
+
+<div class="tab-picker-backdrop" id="tabPickerBackdrop" hidden></div>
+<div class="tab-picker" id="tabPicker" hidden role="dialog" aria-label="Add open tabs to quick shortcuts" aria-modal="true">
+  <div class="tab-picker-header">
+    <span class="tab-picker-title">Add open tabs</span>
+    <button class="tab-picker-close" type="button" data-action="close-tab-picker" aria-label="Close">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+    </button>
+  </div>
+  <div class="tab-picker-search-wrap">
+    <svg class="tab-picker-search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.6-5.4a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
+    <input
+      class="tab-picker-search"
+      id="tabPickerSearch"
+      type="search"
+      placeholder="Filter tabs..."
+      autocomplete="off"
+      aria-label="Filter open tabs"
+    >
+  </div>
+  <div class="tab-picker-add-url-row">
+    <button class="tab-picker-add-url-btn" type="button" data-action="add-by-url">Add by URL</button>
+  </div>
+  <div class="tab-picker-list" id="tabPickerList" role="listbox" aria-multiselectable="true"></div>
+  <div class="tab-picker-footer" id="tabPickerFooter" hidden>
+    <span class="tab-picker-footer-count" id="tabPickerFooterCount"></span>
+    <button class="tab-picker-footer-add" type="button" data-action="add-selected-tabs">Add selected</button>
+    <button class="tab-picker-footer-clear" type="button" data-action="clear-tab-picker-selection">Clear</button>
+  </div>
 </div>
 
 <button class="back-to-top" id="backToTopBtn" type="button" aria-label="Back to top" title="Back to top">

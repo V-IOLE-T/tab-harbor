@@ -1590,6 +1590,7 @@ body.group-dragging .group-nav-button {
 .toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
 }
 
 .toast svg {
@@ -1597,6 +1598,23 @@ body.group-dragging .group-nav-button {
   height: 16px;
   color: var(--status-active);
 }
+
+.toast-action[hidden] { display: none !important; }
+
+.toast-action {
+  background: transparent;
+  border: none;
+  color: var(--accent-amber);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.toast-action:hover { color: var(--paper); }
 
 .shortcut-editor-backdrop[hidden],
 .shortcut-editor[hidden] {
@@ -3129,6 +3147,332 @@ body.page-chip-list-dragging .chip-reorder-handle {
   line-height: 1.6;
   margin-bottom: 12px;
 }
+
+/* ---- Tab Picker Popover ---- */
+.tab-picker-backdrop[hidden] { display: none !important; }
+
+.tab-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  z-index: 108;
+}
+
+.tab-picker[hidden] { display: none !important; }
+
+.tab-picker {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 320px;
+  max-height: min(480px, calc(100vh - 80px));
+  border: 1px solid color-mix(in srgb, var(--workspace-accent-border) calc(var(--custom-border-opacity) + 8%), var(--warm-gray) 28%);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card-bg) var(--panel-card-opacity), transparent);
+  box-shadow: 0 20px 42px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 109;
+}
+
+.tab-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  flex-shrink: 0;
+}
+
+.tab-picker-title {
+  font-family: 'Libre Caslon Display', serif;
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.tab-picker-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-picker-close:hover {
+  background: rgba(154, 145, 138, 0.12);
+  color: var(--ink);
+}
+
+.tab-picker-close svg { width: 14px; height: 14px; }
+
+.tab-picker-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 10px;
+  flex-shrink: 0;
+}
+
+.tab-picker-search-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.tab-picker-add-url-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 14px 8px;
+  flex-shrink: 0;
+}
+
+.tab-picker-add-url-btn {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--workspace-chip-text);
+  cursor: pointer;
+  transition: background 0.12s, transform 0.12s;
+  background: var(--workspace-chip-bg);
+  border: 1px solid var(--workspace-chip-border);
+  border-radius: 24px;
+  padding: 5px 14px;
+  min-height: 30px;
+  width: 100%;
+}
+
+.tab-picker-add-url-btn:hover {
+  background: var(--workspace-chip-bg-strong);
+}
+
+.tab-picker-add-url-btn:active {
+  transform: scale(0.97);
+}
+
+.tab-picker-add-url-btn:focus-visible {
+  outline: 2px solid var(--workspace-chip-text);
+  outline-offset: 1px;
+}
+
+.tab-picker-search {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.tab-picker-search::placeholder { color: var(--muted); }
+
+.tab-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 6px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--warm-gray) transparent;
+}
+
+.tab-picker-list::-webkit-scrollbar { width: 4px; }
+.tab-picker-list::-webkit-scrollbar-track { background: transparent; }
+.tab-picker-list::-webkit-scrollbar-thumb {
+  background: var(--warm-gray);
+  border-radius: 999px;
+}
+
+.tab-picker-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 8px 10px 4px;
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--card-bg) var(--panel-card-opacity), transparent);
+  z-index: 1;
+}
+
+.tab-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.tab-picker-row:hover { background: color-mix(in srgb, var(--workspace-accent-soft) 48%, transparent); }
+.tab-picker-row.is-selected { background: color-mix(in srgb, var(--workspace-accent-soft) 36%, transparent); }
+.tab-picker-row:focus-visible { outline: 2px solid var(--workspace-chip-text); outline-offset: 1px; }
+
+.tab-picker-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--warm-gray);
+  border-radius: 4px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+  position: relative;
+}
+
+.tab-picker-checkbox:checked {
+  background: var(--workspace-chip-text);
+  border-color: var(--workspace-chip-text);
+}
+
+.tab-picker-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 5px;
+  height: 8px;
+  border: 1.5px solid white;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+.tab-picker-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.tab-picker-favicon-fallback {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--theme-accent-soft);
+  color: var(--theme-accent-strong);
+  font-size: 8px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tab-picker-tab-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-picker-add-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--workspace-accent-soft) 56%, var(--card-bg) 44%);
+  color: var(--workspace-chip-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, transform 0.12s;
+}
+
+.tab-picker-row:hover .tab-picker-add-btn,
+.tab-picker-add-btn:focus-visible { opacity: 1; }
+
+.tab-picker-add-btn:hover {
+  background: var(--workspace-chip-bg-strong);
+  transform: scale(1.08);
+}
+
+.tab-picker-add-btn:active { transform: scale(0.96); }
+.tab-picker-add-btn svg { width: 12px; height: 12px; }
+
+.tab-picker-added-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--accent-sage);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.tab-picker-empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.tab-picker-footer[hidden] { display: none !important; }
+
+.tab-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--workspace-accent-border) 16%, transparent);
+  flex-shrink: 0;
+}
+
+.tab-picker-footer-count {
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tab-picker-footer-add {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  background: var(--workspace-chip-text);
+  color: var(--workspace-accent-contrast);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s;
+  min-height: 32px;
+}
+
+.tab-picker-footer-add:hover { background: var(--banner-action-bg-hover); }
+.tab-picker-footer-add:active { transform: scale(0.97); }
+
+.tab-picker-footer-clear {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.tab-picker-footer-clear:hover { color: var(--ink); background: rgba(154, 145, 138, 0.1); }
 
 @media (prefers-reduced-motion: reduce) {
   *,
