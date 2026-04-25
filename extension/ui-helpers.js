@@ -133,9 +133,14 @@ function showToast(message, { action } = {}) {
   if (action) {
     toastAction.textContent = action.label;
     toastAction.hidden = false;
-    toastAction.onclick = () => {
-      action.fn();
-      toast.classList.remove('visible');
+    toastAction.onclick = async () => {
+      try {
+        await Promise.resolve(action.fn());
+      } catch (error) {
+        console.error('Toast action failed:', error);
+      } finally {
+        toast.classList.remove('visible');
+      }
     };
   } else {
     toastAction.hidden = true;
