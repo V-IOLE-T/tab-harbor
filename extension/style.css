@@ -2114,6 +2114,11 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   letter-spacing: 0.3px;
 }
 
+.missions-empty-state {
+  width: 100%;
+  min-height: 380px;
+}
+
 
 /* ================================================================
    UPDATE BANNER

@@ -1326,8 +1326,8 @@ async function renderStaticDashboard() {
 
   if (domainGroups.length > 0 && openTabsSection) {
     if (openTabsSectionTitle) openTabsSectionTitle.textContent = 'Open tabs';
-    openTabsSectionCount.innerHTML = `<span class="section-summary">${realTabs.length} tab${realTabs.length !== 1 ? 's' : ''} across ${domainGroups.length} group${domainGroups.length !== 1 ? 's' : ''}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} Close all tabs</button>`;
-    openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
+    if (openTabsSectionCount) openTabsSectionCount.innerHTML = `<span class="section-summary">${realTabs.length} tab${realTabs.length !== 1 ? 's' : ''} across ${domainGroups.length} group${domainGroups.length !== 1 ? 's' : ''}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} Close all tabs</button>`;
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     if (openTabsGroupNav) {
       openTabsGroupNav.innerHTML = renderGroupNavArea(domainGroups);
       openTabsGroupNav.style.display = 'flex';
@@ -1338,7 +1338,19 @@ async function renderStaticDashboard() {
       openTabsGroupNav.innerHTML = '';
       openTabsGroupNav.style.display = 'none';
     }
-    openTabsSection.style.display = 'none';
+    openTabsSection.style.display = 'block';
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = `
+      <div class="missions-empty-state">
+        <div class="empty-checkmark">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+        </div>
+        <div class="empty-title">Inbox zero, but for tabs.</div>
+        <div class="empty-subtitle">You're free.</div>
+      </div>
+    `;
+    if (openTabsSectionCount) openTabsSectionCount.textContent = '0 domains';
   }
 
   // --- Footer stats ---
