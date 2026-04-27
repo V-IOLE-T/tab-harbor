@@ -122,6 +122,9 @@
       languageAuto: 'Auto',
       languageEnglish: 'English',
       languageChinese: '中文',
+      chromeTabGroupsLabel: 'Chrome tab groups',
+      toastChromeTabGroupsOn: 'Chrome tab groups on',
+      toastChromeTabGroupsOff: 'Chrome tab groups off',
     },
     'zh-CN': {
       emptyTitle: '标签页清零了。',
@@ -219,6 +222,9 @@
       languageAuto: '自动',
       languageEnglish: 'English',
       languageChinese: '中文',
+      chromeTabGroupsLabel: 'Chrome 标签组',
+      toastChromeTabGroupsOn: '已启用 同步Chrome标签组',
+      toastChromeTabGroupsOff: '已禁用 同步Chrome标签组',
     },
   };
 
@@ -287,6 +293,8 @@
     'Add quick tab': '添加快捷链接',
     'Edit quick tab': '编辑快捷链接',
     'Remove quick tab': '删除快捷链接',
+    'Sync Chrome tab groups': '同步Chrome标签组',
+    'Homepages': '主页',
   };
 
   function i18nFormat(template, vars = {}) {

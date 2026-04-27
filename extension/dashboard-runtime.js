@@ -265,7 +265,7 @@ function updateGroupNavButtonIcon(groupKey) {
   const button = document.querySelector(`.group-nav-button[data-group-id="${CSS.escape(String(groupKey))}"]`);
   if (!group || !button || !runtimeGetGroupIcon) return;
 
-  const label = group.domain === '__landing-pages__' ? 'Homepages' : (group.label || friendlyDomain(group.domain));
+  const label = group.domain === '__landing-pages__' ? (runtimeT ? runtimeT('homepagesLabel') : 'Homepages') : (group.label || friendlyDomain(group.domain));
   const orderedGroup = {
     ...group,
     tabs: getOrderedUniqueTabsForGroup(group),
@@ -1081,7 +1081,7 @@ function renderDomainCard(group) {
       <div class="mission-content">
         <div class="mission-top">
           <div class="mission-heading">
-            <span class="mission-name">${isLanding ? 'Homepages' : (group.label || friendlyDomain(group.domain))}</span>
+            <span class="mission-name">${isLanding ? (runtimeT ? runtimeT('homepagesLabel') : 'Homepages') : (group.label || friendlyDomain(group.domain))}</span>
             ${tabBadge}
             ${dupeBadge}
           </div>
@@ -1100,7 +1100,7 @@ function renderDomainCard(group) {
 function renderGroupNav(group) {
   const stableId = getStableGroupId(group.domain);
   const isLanding = group.domain === '__landing-pages__';
-  const label = isLanding ? 'Homepages' : (group.label || friendlyDomain(group.domain));
+  const label = isLanding ? (runtimeT ? runtimeT('homepagesLabel') : 'Homepages') : (group.label || friendlyDomain(group.domain));
   const orderedGroup = {
     ...group,
     tabs: getOrderedUniqueTabsForGroup(group),
@@ -1184,9 +1184,9 @@ function renderGroupNavArea(groups) {
         </div>
         <div class="theme-menu-section">
           <label class="theme-menu-toggle-label">
-            <input type="checkbox" data-action="toggle-chrome-tab-groups"${chromeTabGroupsEnabled ? ' checked' : ''}>
+            <input type="checkbox" data-action="toggle-chrome-tab-groups"${chromeTabGroupsEnabled ? ' checked' : ''} aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}">
             <span class="theme-menu-toggle-slider"></span>
-            <span class="theme-menu-label">Chrome tab groups</span>
+            <span class="theme-menu-label">${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}</span>
           </label>
         </div>
         <input type="file" id="themeBackgroundInput" accept="image/*" hidden>
@@ -1666,7 +1666,7 @@ document.addEventListener('click', async (e) => {
     chromeTabGroupsEnabled = nextEnabled;
     await renderDashboard();
     if (typeof setImportMode === 'function') setImportMode(false);
-    showToast(nextEnabled ? 'Chrome tab groups on' : 'Chrome tab groups off');
+    showToast(nextEnabled ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on') : (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off'));
     return;
   }
 
@@ -1874,7 +1874,7 @@ document.addEventListener('click', async (e) => {
     if (idx !== -1) domainGroups.splice(idx, 1);
 
     const groupLabel = group.domain === '__landing-pages__'
-      ? 'Homepages'
+      ? (runtimeT ? runtimeT('homepagesLabel') : 'Homepages')
       : (group.label || friendlyDomain(group.domain));
     const tabsWord = runtimeT
       ? (urls.length === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'))
