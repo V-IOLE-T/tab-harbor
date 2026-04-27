@@ -2349,4 +2349,6 @@ function mountDashboardRuntime() {
 globalThis.TabHarborDashboardRuntime = {
   initializeDashboardRuntime,
   mountDashboardRuntime,
+  fetchOpenTabs,
+  getOpenTabs: () => openTabs,
 };

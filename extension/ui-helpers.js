@@ -128,9 +128,30 @@ function animateCardOut(card) {
   }, 300);
 }
 
-function showToast(message) {
+function showToast(message, { action } = {}) {
   const toast = document.getElementById('toast');
-  document.getElementById('toastText').textContent = message;
+  const toastText = document.getElementById('toastText');
+  const toastAction = document.getElementById('toastAction');
+
+  toastText.textContent = message;
+
+  if (action) {
+    toastAction.textContent = action.label;
+    toastAction.hidden = false;
+    toastAction.onclick = async () => {
+      try {
+        await Promise.resolve(action.fn());
+      } catch (error) {
+        console.error('Toast action failed:', error);
+      } finally {
+        toast.classList.remove('visible');
+      }
+    };
+  } else {
+    toastAction.hidden = true;
+    toastAction.onclick = null;
+  }
+
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2500);
 }
