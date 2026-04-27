@@ -42,6 +42,16 @@ const {
 } = globalThis.TabOutDeferredTriggerPosition || {};
 
 const {
+  loadChromeTabGroupsSetting,
+  saveChromeTabGroupsSetting,
+  syncChromeTabGroups,
+  isChromeTabGroupsEnabled,
+  populateChromeGroupMap,
+  queryExistingChromeGroups,
+  setImportMode,
+} = globalThis.TabOutChromeTabGroups || {};
+
+const {
   reorderSubsetByIds,
 } = globalThis.TabOutListOrder || {};
 
@@ -77,6 +87,7 @@ let draggedPageChipId = '';
 let draggedPageChipEl = null;
 let pageChipDragState = null;
 let pageChipPlaceholderEl = null;
+let chromeTabGroupsEnabled = false;
 
 function reorderVisibleItemsByIds(items, orderIds, includeItem) {
   if (reorderSubsetByIds) {
@@ -1142,6 +1153,13 @@ function renderGroupNavArea(groups) {
             value="14"
           >
         </div>
+        <div class="theme-menu-section">
+          <label class="theme-menu-toggle-label">
+            <input type="checkbox" data-action="toggle-chrome-tab-groups"${chromeTabGroupsEnabled ? ' checked' : ''}>
+            <span class="theme-menu-toggle-slider"></span>
+            <span class="theme-menu-label">Chrome tab groups</span>
+          </label>
+        </div>
         <input type="file" id="themeBackgroundInput" accept="image/*" hidden>
       </div>
     </div>`;
@@ -1356,6 +1374,9 @@ async function renderStaticDashboard() {
 
 async function renderDashboard() {
   await renderStaticDashboard();
+  if (typeof syncChromeTabGroups === 'function') {
+    await syncChromeTabGroups(domainGroups);
+  }
 }
 
 function handleIconError(imgEl, fallbackUrl) {
@@ -1544,6 +1565,58 @@ document.addEventListener('click', async (e) => {
     await saveGroupOrder(nextState);
     await renderDashboard();
     showToast(nextState.pinEnabled ? 'Pinned current order' : 'Pin order turned off');
+    return;
+  }
+
+  if (action === 'toggle-chrome-tab-groups') {
+    e.stopPropagation();
+    const nextEnabled = !isChromeTabGroupsEnabled();
+
+    if (nextEnabled && typeof queryExistingChromeGroups === 'function' && typeof populateChromeGroupMap === 'function') {
+      const existingGroups = await queryExistingChromeGroups();
+      if (existingGroups.length > 0) {
+        let state = normalizeSessionGroups(sessionGroupsState);
+        const mappings = [];
+        for (const chromeGroup of existingGroups) {
+          const tabs = await chrome.tabs.query({ groupId: chromeGroup.id }).catch(() => []);
+          const tabIds = tabs.map(t => t.id).filter(Boolean);
+          if (tabIds.length === 0) continue;
+          const name = chromeGroup.title || 'Group';
+          let group;
+          try {
+            const result = addSessionGroup(state, name);
+            state = result.state;
+            group = result.group;
+          } catch {
+            group = state.groups.find(g => g.name === name);
+          }
+          if (group) {
+            for (const tabId of tabIds) {
+              state = assignTabToSessionGroup(state, tabId, group.id);
+            }
+            const uniqueWindows = new Set(tabs.map(t => t.windowId));
+            for (const windowId of uniqueWindows) {
+              mappings.push({
+                virtualGroupKey: `__session_group__:${group.id}`,
+                windowId,
+                chromeGroupId: chromeGroup.id,
+              });
+            }
+          }
+        }
+        if (mappings.length > 0) {
+          await saveSessionGroups(state);
+          populateChromeGroupMap(mappings);
+          if (typeof setImportMode === 'function') setImportMode(true);
+        }
+      }
+    }
+
+    await saveChromeTabGroupsSetting(nextEnabled);
+    chromeTabGroupsEnabled = nextEnabled;
+    await renderDashboard();
+    if (typeof setImportMode === 'function') setImportMode(false);
+    showToast(nextEnabled ? 'Chrome tab groups on' : 'Chrome tab groups off');
     return;
   }
 
@@ -2277,6 +2350,9 @@ document.addEventListener('submit', async (e) => {
    ---------------------------------------------------------------- */
 async function initializeDashboardRuntime() {
   await loadThemePreferences();
+  if (typeof loadChromeTabGroupsSetting === 'function') {
+    chromeTabGroupsEnabled = await loadChromeTabGroupsSetting();
+  }
   await renderDashboard();
   updateBackToTopVisibility();
 }

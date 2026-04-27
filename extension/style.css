@@ -745,6 +745,59 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
   color: var(--ink);
 }
 
+/* ---- Chrome tab groups toggle ---- */
+.theme-menu-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.theme-menu-toggle-label input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.theme-menu-toggle-slider {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warm-gray) 60%, var(--muted) 40%);
+  transition: background 0.2s ease;
+}
+
+.theme-menu-toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--card-bg);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 20%, transparent);
+}
+
+.theme-menu-toggle-label input[type="checkbox"]:checked + .theme-menu-toggle-slider {
+  background: var(--workspace-accent);
+}
+
+.theme-menu-toggle-label input[type="checkbox"]:checked + .theme-menu-toggle-slider::after {
+  transform: translateX(16px);
+}
+
+.theme-menu-toggle-label .theme-menu-label {
+  cursor: pointer;
+}
+
 /* ---- Tab cleanup banner ---- */
 .tab-cleanup-banner {
   background: linear-gradient(
