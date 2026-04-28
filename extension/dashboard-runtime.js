@@ -16,6 +16,12 @@
 'use strict';
 
 const {
+  getLanguagePreference: runtimeGetLanguagePreference,
+  setLanguagePreference: runtimeSetLanguagePreference,
+  t: runtimeT,
+} = globalThis.TabHarborI18n || {};
+
+const {
   escapeHtmlAttribute: runtimeEscapeHtmlAttribute,
   getFallbackLabel: runtimeGetFallbackLabel,
   getGroupIcon: runtimeGetGroupIcon,
@@ -662,18 +668,18 @@ function buildMoveMenu(tab) {
         type="button"
         data-action="toggle-move-menu"
         data-tab-id="${tab.id}"
-        aria-label="Move to group"
+        aria-label="${runtimeT ? runtimeT('moveToGroup') : 'Move to group'}"
         aria-expanded="false"
-        title="Move to group"
+        title="${runtimeT ? runtimeT('moveToGroup') : 'Move to group'}"
       >
         ${ICONS.move}
       </button>
       <div class="chip-move-menu" hidden>
-        ${groupButtons || '<div class="move-menu-empty">No groups yet</div>'}
+        ${groupButtons || `<div class="move-menu-empty">${runtimeT ? runtimeT('noGroupsYet') : 'No groups yet'}</div>`}
         <button class="move-menu-btn move-menu-btn-primary" type="button" data-action="move-tab-to-new-group" data-tab-id="${tab.id}">
-          + New group
+          ${runtimeT ? runtimeT('newGroupButton') : '+ New group'}
         </button>
-        ${currentGroupId ? `<button class="move-menu-btn" type="button" data-action="move-tab-to-original" data-tab-id="${tab.id}">Back to original group</button>` : ''}
+        ${currentGroupId ? `<button class="move-menu-btn" type="button" data-action="move-tab-to-original" data-tab-id="${tab.id}">${runtimeT ? runtimeT('backToOriginalGroup') : 'Back to original group'}</button>` : ''}
       </div>
     </div>`;
 }
@@ -779,11 +785,29 @@ async function focusTab(url) {
   return true;
 }
 
+async function navigateCurrentTabToUrl(url) {
+  if (!url) return false;
+
+  const currentTab = await chrome.tabs.getCurrent();
+  if (currentTab?.id) {
+    await chrome.tabs.update(currentTab.id, { url, active: true });
+    return true;
+  }
+
+  const [activeTab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  });
+  if (!activeTab?.id) return false;
+
+  await chrome.tabs.update(activeTab.id, { url, active: true });
+  return true;
+}
+
 async function openOrFocusUrl(url) {
-  const focused = await focusTab(url);
-  if (focused) return true;
-  await chrome.tabs.create({ url });
-  return false;
+  if (!url) return false;
+  await navigateCurrentTabToUrl(url);
+  return true;
 }
 
 async function runDefaultSearch(query) {
@@ -799,7 +823,7 @@ async function runDefaultSearch(query) {
   }
 
   const fallbackUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}`;
-  await chrome.tabs.create({ url: fallbackUrl });
+  await navigateCurrentTabToUrl(fallbackUrl);
 }
 
 /**
@@ -931,10 +955,10 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
         ${buildMoveMenu(tab)}
-        <button class="chip-action chip-save" type="button" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" aria-label="Save for later" title="Save for later">
+        <button class="chip-action chip-save" type="button" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" aria-label="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}" title="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        <button class="chip-action chip-close" type="button" data-action="close-single-tab" data-tab-url="${safeUrl}" aria-label="Close this tab" title="Close this tab">
+        <button class="chip-action chip-close" type="button" data-action="close-single-tab" data-tab-url="${safeUrl}" aria-label="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}" title="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -944,7 +968,7 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
   return `
     <div class="page-chips-overflow" style="display:none">${hiddenChips}</div>
     <div class="page-chip page-chip-overflow clickable" data-action="expand-chips">
-      <span class="chip-text">+${hiddenTabs.length} more</span>
+      <span class="chip-text">${runtimeT ? runtimeT('moreCount', { count: hiddenTabs.length }) : `+${hiddenTabs.length} more`}</span>
     </div>`;
 }
 
@@ -974,12 +998,22 @@ function renderDomainCard(group) {
 
   const tabBadge = `<span class="open-tabs-badge">
     ${ICONS.tabs}
-    ${tabCount} tab${tabCount !== 1 ? 's' : ''} open
+    ${runtimeT
+      ? runtimeT('tabsOpenBadge', {
+          count: tabCount,
+          tabsWord: tabCount === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'),
+        })
+      : `${tabCount} tab${tabCount !== 1 ? 's' : ''} open`}
   </span>`;
 
   const dupeBadge = hasDupes
     ? `<span class="open-tabs-badge is-duplicate">
-        ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}
+        ${runtimeT
+          ? runtimeT('duplicatesCount', {
+              count: totalExtras,
+              suffix: totalExtras !== 1 ? 's' : '',
+            })
+          : `${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`}
       </span>`
     : '';
 
@@ -1013,7 +1047,7 @@ function renderDomainCard(group) {
     const fallbackUrl = iconData.sources[1] || '';
     const fallbackLabel = runtimeGetFallbackLabel(label, iconData.hostname);
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" data-chip-sort-id="${safeSortId}" data-chip-group-id="${safeGroupId}" aria-label="${safeTitle}">
-      <button class="drawer-reorder-handle chip-reorder-handle" type="button" data-chip-drag-handle="tab" aria-label="Drag to reorder tab">
+      <button class="drawer-reorder-handle chip-reorder-handle" type="button" data-chip-drag-handle="tab" aria-label="${runtimeT ? runtimeT('dragReorderTab') : 'Drag to reorder tab'}">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01" /></svg>
       </button>
       ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-fallback-url="${fallbackUrl}">` : ''}
@@ -1021,10 +1055,10 @@ function renderDomainCard(group) {
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
         ${buildMoveMenu(tab)}
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
+        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">
+        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -1034,7 +1068,7 @@ function renderDomainCard(group) {
   const closeAllButton = `
       <button class="action-btn close-tabs" type="button" data-action="close-domain-tabs" data-domain-id="${stableId}">
         ${ICONS.close}
-        Close group
+        ${runtimeT ? runtimeT('closeGroup') : 'Close group'}
       </button>`;
 
   let actionsHtml = '';
@@ -1042,7 +1076,9 @@ function renderDomainCard(group) {
     const dupeUrlsEncoded = dupeUrls.map(([url]) => encodeURIComponent(url)).join(',');
     actionsHtml += `
       <button class="action-btn" type="button" data-action="dedup-keep-one" data-dupe-urls="${dupeUrlsEncoded}">
-        Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}
+        ${runtimeT
+          ? runtimeT('closedDuplicatesCount', { count: totalExtras, suffix: totalExtras !== 1 ? 's' : '' })
+          : `Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`}
       </button>`;
   }
 
@@ -1063,7 +1099,7 @@ function renderDomainCard(group) {
       </div>
       <div class="mission-meta">
         <div class="mission-page-count">${tabCount}</div>
-        <div class="mission-page-label">tabs</div>
+        <div class="mission-page-label">${runtimeT ? runtimeT('tabsLabel') : 'tabs'}</div>
       </div>
     </div>`;
 }
@@ -1086,7 +1122,7 @@ function renderGroupNav(group) {
       data-group-id="${group.domain}"
       data-domain-id="${stableId}"
       data-tooltip="${safeTooltip}"
-      aria-label="Jump to ${label}"
+      aria-label="${runtimeT ? runtimeT('jumpToLabel', { label }) : `Jump to ${label}` }"
       draggable="false"
     >
       ${iconData.src
@@ -1097,13 +1133,16 @@ function renderGroupNav(group) {
 }
 
 function renderGroupNavArea(groups) {
-  const pinTooltip = groupOrderState.pinEnabled ? 'Pinned order' : 'Pin order';
+  const pinTooltip = groupOrderState.pinEnabled
+    ? (runtimeT ? runtimeT('pinnedOrder') : 'Pinned order')
+    : (runtimeT ? runtimeT('pinOrder') : 'Pin order');
+  const languagePreference = runtimeGetLanguagePreference ? runtimeGetLanguagePreference() : 'auto';
   return `
     <div class="group-nav-list">
       ${groups.map(group => renderGroupNav(group)).join('')}
     </div>
     <div class="group-nav-tools">
-      <button class="header-theme-trigger" id="themeMenuTrigger" type="button" data-action="toggle-theme-menu" data-tooltip="Desk settings" aria-label="Desk settings" aria-expanded="false" aria-controls="themeMenuPanel">
+      <button class="header-theme-trigger" id="themeMenuTrigger" type="button" data-action="toggle-theme-menu" data-tooltip="${runtimeT ? runtimeT('deskSettings') : 'Desk settings'}" aria-label="${runtimeT ? runtimeT('deskSettings') : 'Desk settings'}" aria-expanded="false" aria-controls="themeMenuPanel">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5h15m-12 4.5h9m-6 4.5h3" />
           <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
@@ -1114,28 +1153,36 @@ function renderGroupNavArea(groups) {
       <button class="group-pin-toggle ${groupOrderState.pinEnabled ? 'is-active' : ''}" id="headerPinToggle" type="button" data-action="toggle-pin-order" data-tooltip="${pinTooltip}" aria-label="${pinTooltip}" aria-pressed="${groupOrderState.pinEnabled}">
         ${ICONS.pin}
       </button>
-      <div class="theme-menu" id="themeMenuPanel" hidden role="dialog" aria-label="Desk settings panel">
+      <div class="theme-menu" id="themeMenuPanel" hidden role="dialog" aria-label="${runtimeT ? runtimeT('deskSettingsPanel') : 'Desk settings panel'}">
         <div class="theme-menu-section">
-          <div class="theme-menu-label">Desk palette</div>
+          <div class="theme-menu-label">${runtimeT ? runtimeT('deskPalette') : 'Desk palette'}</div>
           <div class="theme-options" id="themeOptions"></div>
         </div>
         <div class="theme-menu-section">
-          <div class="theme-menu-label">Desk backdrop</div>
+          <div class="theme-menu-label">${runtimeT ? runtimeT('deskBackdrop') : 'Desk backdrop'}</div>
           <div class="theme-menu-actions">
-            <button class="theme-menu-action" type="button" data-action="open-background-picker">Upload image</button>
-            <button class="theme-menu-action is-secondary" type="button" data-action="clear-custom-background">Clear</button>
+            <button class="theme-menu-action" type="button" data-action="open-background-picker">${runtimeT ? runtimeT('uploadImage') : 'Upload image'}</button>
+            <button class="theme-menu-action is-secondary" type="button" data-action="clear-custom-background">${runtimeT ? runtimeT('clearText') : 'Clear'}</button>
+          </div>
+        </div>
+        <div class="theme-menu-section">
+          <div class="theme-menu-label">${runtimeT ? runtimeT('languageLabel') : 'Language'}</div>
+          <div class="theme-language-options" role="group" aria-label="${runtimeT ? runtimeT('languageLabel') : 'Language'}">
+            <button class="theme-language-option ${languagePreference === 'auto' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="auto" aria-pressed="${languagePreference === 'auto'}">${runtimeT ? runtimeT('languageAuto') : 'Auto'}</button>
+            <button class="theme-language-option ${languagePreference === 'en' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="en" aria-pressed="${languagePreference === 'en'}">${runtimeT ? runtimeT('languageEnglish') : 'English'}</button>
+            <button class="theme-language-option ${languagePreference === 'zh-CN' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="zh-CN" aria-pressed="${languagePreference === 'zh-CN'}">${runtimeT ? runtimeT('languageChinese') : '中文'}</button>
           </div>
         </div>
         <div class="theme-menu-section">
           <div class="theme-menu-row">
-            <div class="theme-menu-label">Surface depth</div>
+            <div class="theme-menu-label">${runtimeT ? runtimeT('surfaceDepth') : 'Surface depth'}</div>
             <div class="theme-range-value" id="themeTransparencyValue">14%</div>
           </div>
           <input
             class="theme-range"
             id="themeTransparencyRange"
             type="range"
-            aria-label="Surface depth"
+            aria-label="${runtimeT ? runtimeT('surfaceDepth') : 'Surface depth'}"
             min="2"
             max="60"
             step="1"
@@ -1325,9 +1372,20 @@ async function renderStaticDashboard() {
   const openTabsGroupNav     = document.getElementById('openTabsGroupNav');
 
   if (domainGroups.length > 0 && openTabsSection) {
-    if (openTabsSectionTitle) openTabsSectionTitle.textContent = 'Open tabs';
-    openTabsSectionCount.innerHTML = `<span class="section-summary">${realTabs.length} tab${realTabs.length !== 1 ? 's' : ''} across ${domainGroups.length} group${domainGroups.length !== 1 ? 's' : ''}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} Close all tabs</button>`;
-    openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
+    if (openTabsSectionTitle) openTabsSectionTitle.textContent = runtimeT ? runtimeT('openTabsSectionTitle') : 'Open tabs';
+    const tabsWord = runtimeT
+      ? (realTabs.length === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'))
+      : `tab${realTabs.length !== 1 ? 's' : ''}`;
+    const groupsWord = runtimeT
+      ? (domainGroups.length === 1 ? runtimeT('groupsWordSingular') : runtimeT('groupsWordPlural'))
+      : `group${domainGroups.length !== 1 ? 's' : ''}`;
+    const summary = runtimeT
+      ? runtimeT('sectionSummary', { tabs: realTabs.length, groups: domainGroups.length, tabsWord, groupsWord })
+      : `${realTabs.length} ${tabsWord} across ${domainGroups.length} ${groupsWord}`;
+    if (openTabsSectionCount) {
+      openTabsSectionCount.innerHTML = `<span class="section-summary">${summary}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} ${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}</button>`;
+    }
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     if (openTabsGroupNav) {
       openTabsGroupNav.innerHTML = renderGroupNavArea(domainGroups);
       openTabsGroupNav.style.display = 'flex';
@@ -1338,7 +1396,9 @@ async function renderStaticDashboard() {
       openTabsGroupNav.innerHTML = '';
       openTabsGroupNav.style.display = 'none';
     }
-    openTabsSection.style.display = 'none';
+    openTabsSection.style.display = 'block';
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderMissionsEmptyState();
+    if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
   }
 
   // --- Footer stats ---
@@ -1413,7 +1473,7 @@ document.addEventListener('click', async (e) => {
     const themeId = actionEl.dataset.themeId || 'paper';
     await saveThemePreferences({ themeId });
     setThemeMenuOpen(false, { restoreFocus: true });
-    showToast('Theme updated');
+    showToast(runtimeT ? runtimeT('toastThemeUpdated') : 'Theme updated');
     return;
   }
 
@@ -1425,8 +1485,16 @@ document.addEventListener('click', async (e) => {
   if (action === 'clear-custom-background') {
     await saveThemePreferences({ customBackground: '' });
     setThemeMenuOpen(false, { restoreFocus: true });
-    showToast('Background cleared');
+    showToast(runtimeT ? runtimeT('toastBackgroundCleared') : 'Background cleared');
     return;
+  }
+
+  if (action === 'select-language') {
+    const language = actionEl.dataset.language || 'auto';
+    if (runtimeSetLanguagePreference) {
+      await runtimeSetLanguagePreference(language, { reload: true });
+      return;
+    }
   }
 
   // ---- Close duplicate Tab Harbor tabs ----
@@ -1442,7 +1510,7 @@ document.addEventListener('click', async (e) => {
       banner.style.opacity = '0';
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
-    showToast('Closed extra Tab Harbor tabs');
+    showToast(runtimeT ? runtimeT('toastClosedExtraTabHarborTabs') : 'Closed extra Tab Harbor tabs');
     return;
   }
 
@@ -1474,7 +1542,7 @@ document.addEventListener('click', async (e) => {
     await saveSessionGroups(nextState);
     closeMoveMenus();
     await renderDashboard();
-    showToast(`Moved to ${group.name}`);
+    showToast(runtimeT ? runtimeT('toastMovedTo', { name: group.name }) : `Moved to ${group.name}`);
     return;
   }
 
@@ -1484,7 +1552,7 @@ document.addEventListener('click', async (e) => {
     const tabId = Number(actionEl.dataset.tabId);
     if (!tabId) return;
 
-    const nextName = window.prompt('New group name');
+    const nextName = window.prompt(runtimeT ? runtimeT('promptNewGroupName') : 'New group name');
     if (!nextName || !nextName.trim()) {
       closeMoveMenus();
       return;
@@ -1496,9 +1564,9 @@ document.addEventListener('click', async (e) => {
       await saveSessionGroups(nextState);
       closeMoveMenus();
       await renderDashboard();
-      showToast(`Created ${created.group.name}`);
+      showToast(runtimeT ? runtimeT('toastCreatedGroup', { name: created.group.name }) : `Created ${created.group.name}`);
     } catch (err) {
-      showToast(err.message || 'Could not create group');
+      showToast(err.message || (runtimeT ? runtimeT('toastCouldNotCreateGroup') : 'Could not create group'));
     }
     return;
   }
@@ -1516,7 +1584,7 @@ document.addEventListener('click', async (e) => {
     await saveSessionGroups(nextState);
     closeMoveMenus();
     await renderDashboard();
-    showToast('Moved back to original group');
+    showToast(runtimeT ? runtimeT('toastMovedBackToOriginalGroup') : 'Moved back to original group');
     return;
   }
 
@@ -1547,7 +1615,9 @@ document.addEventListener('click', async (e) => {
     );
     await saveGroupOrder(nextState);
     await renderDashboard();
-    showToast(nextState.pinEnabled ? 'Pinned current order' : 'Pin order turned off');
+    showToast(nextState.pinEnabled
+      ? (runtimeT ? runtimeT('toastPinnedOrder') : 'Pinned current order')
+      : (runtimeT ? runtimeT('toastPinOrderOff') : 'Pin order turned off'));
     return;
   }
 
@@ -1626,7 +1696,7 @@ document.addEventListener('click', async (e) => {
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
 
-    showToast('Tab closed');
+    showToast(runtimeT ? runtimeT('toastTabClosed') : 'Tab closed');
     return;
   }
 
@@ -1645,7 +1715,7 @@ document.addEventListener('click', async (e) => {
       await saveTabForLater({ url: tabUrl, title: tabTitle });
     } catch (err) {
       console.error('[tab-harbor] Failed to save tab:', err);
-      showToast('Failed to save tab');
+      showToast(runtimeT ? runtimeT('toastFailedToSaveTab') : 'Failed to save tab');
       return;
     }
 
@@ -1665,7 +1735,7 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => chip.remove(), 200);
     }
 
-    showToast('Saved for later');
+    showToast(runtimeT ? runtimeT('toastSavedForLater') : 'Saved for later');
     await renderDeferredColumn();
     return;
   }
@@ -1729,7 +1799,7 @@ document.addEventListener('click', async (e) => {
       }, 300);
     }
 
-    showToast('Restored to open tabs');
+    showToast(runtimeT ? runtimeT('toastRestoredToOpenTabs') : 'Restored to open tabs');
     return;
   }
 
@@ -1740,7 +1810,7 @@ document.addEventListener('click', async (e) => {
 
     await deleteArchivedTab(id);
     await renderDeferredColumn();
-    showToast('Removed from archive');
+    showToast(runtimeT ? runtimeT('toastRemovedFromArchive') : 'Removed from archive');
     return;
   }
 
@@ -1748,7 +1818,7 @@ document.addEventListener('click', async (e) => {
   if (action === 'clear-archive') {
     await clearArchivedTabs();
     await renderDeferredColumn();
-    showToast('Archive cleared');
+    showToast(runtimeT ? runtimeT('toastArchiveCleared') : 'Archive cleared');
     return;
   }
 
@@ -1783,8 +1853,15 @@ document.addEventListener('click', async (e) => {
     const idx = domainGroups.indexOf(group);
     if (idx !== -1) domainGroups.splice(idx, 1);
 
-    const groupLabel = group.domain === '__landing-pages__' ? 'Homepages' : (group.label || friendlyDomain(group.domain));
-    showToast(`Closed ${urls.length} tab${urls.length !== 1 ? 's' : ''} from ${groupLabel}`);
+    const groupLabel = group.domain === '__landing-pages__'
+      ? 'Homepages'
+      : (group.label || friendlyDomain(group.domain));
+    const tabsWord = runtimeT
+      ? (urls.length === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'))
+      : `tab${urls.length !== 1 ? 's' : ''}`;
+    showToast(runtimeT
+      ? runtimeT('closedTabsFromGroup', { count: urls.length, tabsWord, groupLabel })
+      : `Closed ${urls.length} ${tabsWord} from ${groupLabel}`);
 
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
@@ -1816,7 +1893,7 @@ document.addEventListener('click', async (e) => {
         setTimeout(() => b.remove(), 200);
       });
       card.querySelectorAll('.open-tabs-badge').forEach(badge => {
-        if (badge.textContent.includes('duplicate')) {
+        if (badge.classList.contains('is-duplicate')) {
           badge.style.transition = 'opacity 0.2s';
           badge.style.opacity    = '0';
           setTimeout(() => badge.remove(), 200);
@@ -1826,7 +1903,7 @@ document.addEventListener('click', async (e) => {
       card.classList.add('has-neutral-bar');
     }
 
-    showToast('Closed duplicates, kept one copy each');
+    showToast(runtimeT ? runtimeT('toastClosedDuplicatesKeptOne') : 'Closed duplicates, kept one copy each');
     return;
   }
 
@@ -1849,7 +1926,7 @@ document.addEventListener('click', async (e) => {
       animateCardOut(c);
     });
 
-    showToast('All tabs closed. Fresh start.');
+    showToast(runtimeT ? runtimeT('toastAllTabsClosed') : 'All tabs closed. Fresh start.');
     return;
   }
 });
@@ -1989,9 +2066,9 @@ document.addEventListener('click', async (e) => {
   }
 
   if (action === 'create-todo') {
-    const title = window.prompt('Todo title');
+    const title = window.prompt(runtimeT ? runtimeT('promptTodoTitle') : 'Todo title');
     if (!title || !title.trim()) return;
-    const description = window.prompt('Todo details (optional)') || '';
+    const description = window.prompt(runtimeT ? runtimeT('promptTodoDetails') : 'Todo details (optional)') || '';
     await createTodoItem({ title, description });
     drawerView = 'todos';
     todoDetailId = '';
@@ -2517,4 +2594,6 @@ function mountDashboardRuntime() {
 globalThis.TabHarborDashboardRuntime = {
   initializeDashboardRuntime,
   mountDashboardRuntime,
+  fetchOpenTabs,
+  getOpenTabs: () => openTabs,
 };

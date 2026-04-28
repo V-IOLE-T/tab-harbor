@@ -13,6 +13,8 @@
  *   Red    (#b35a5a) → 21+ tabs   (time to cull!)
  */
 
+console.log('[tab-harbor bg] Service worker loaded, registering event listeners...');
+
 // ─── Badge updater ────────────────────────────────────────────────────────────
 
 /**
@@ -67,16 +69,16 @@ async function notifyTabHarborPages() {
   try {
     // Find all Tab Harbor dashboard pages
     const extensionId = chrome.runtime.id;
-    
+
     // Query all tabs and filter manually for more reliable matching
     const allTabs = await chrome.tabs.query({});
-    
+
     // Debug: Log ALL tab URLs to see what we're working with
     console.log(`[tab-harbor bg] Total tabs: ${allTabs.length}`);
     allTabs.forEach((tab, idx) => {
       console.log(`[tab-harbor bg] Tab ${idx}: ID=${tab.id}, URL=${tab.url || 'N/A'}, Title=${tab.title || 'N/A'}`);
     });
-    
+
     const dashboardTabs = allTabs.filter(tab => {
       if (!tab.url) return false;
       // Tab Harbor can appear as either:
@@ -87,14 +89,14 @@ async function notifyTabHarborPages() {
         (tab.url === 'chrome://newtab/' && tab.title === 'Tab Harbor')
       );
     });
-    
+
     console.log(`[tab-harbor bg] Found ${dashboardTabs.length} Tab Harbor page(s) to notify`);
-    
+
     if (dashboardTabs.length === 0) {
       console.log('[tab-harbor bg] No Tab Harbor pages open, skipping notification');
       return;
     }
-    
+
     // Send message to each Tab Harbor page to refresh
     let successCount = 0;
     for (const tab of dashboardTabs) {
@@ -107,7 +109,7 @@ async function notifyTabHarborPages() {
         console.warn(`[tab-harbor bg] Failed to notify tab ${tab.id}:`, err.message);
       }
     }
-    
+
     console.log(`[tab-harbor bg] Successfully notified ${successCount}/${dashboardTabs.length} page(s)`);
   } catch (err) {
     console.warn('[tab-harbor bg] Error in notifyTabHarborPages:', err);
@@ -136,9 +138,10 @@ chrome.tabs.onRemoved.addListener(() => {
   notifyTabHarborPages();
 });
 
-// Update badge when a tab's URL changes (e.g. navigating to/from chrome://)
+// Update badge and notify Tab Harbor pages when a tab's URL changes (e.g. navigating to/from chrome://)
 chrome.tabs.onUpdated.addListener(() => {
   updateBadge();
+  notifyTabHarborPages();
 });
 
 // ─── Initial run ─────────────────────────────────────────────────────────────

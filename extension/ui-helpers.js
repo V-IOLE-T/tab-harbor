@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+  locale: uiLocale = 'en',
+  t: uiT,
+} = globalThis.TabHarborI18n || {};
+
 /* ----------------------------------------------------------------
    UI HELPERS
    ---------------------------------------------------------------- */
@@ -123,11 +128,46 @@ function animateCardOut(card) {
   }, 300);
 }
 
-function showToast(message) {
+function showToast(message, { action } = {}) {
   const toast = document.getElementById('toast');
-  document.getElementById('toastText').textContent = message;
+  const toastText = document.getElementById('toastText');
+  const toastAction = document.getElementById('toastAction');
+
+  toastText.textContent = message;
+
+  if (action) {
+    toastAction.textContent = action.label;
+    toastAction.hidden = false;
+    toastAction.onclick = async () => {
+      try {
+        await Promise.resolve(action.fn());
+      } catch (error) {
+        console.error('Toast action failed:', error);
+      } finally {
+        toast.classList.remove('visible');
+      }
+    };
+  } else {
+    toastAction.hidden = true;
+    toastAction.onclick = null;
+  }
+
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2500);
+}
+
+function renderMissionsEmptyState() {
+  return `
+    <div class="missions-empty-state">
+      <div class="empty-checkmark">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      </div>
+      <div class="empty-title">${uiT ? uiT('emptyTitle') : 'Inbox zero, but for tabs.'}</div>
+      <div class="empty-subtitle">${uiT ? uiT('emptySubtitle') : "You're free."}</div>
+    </div>
+  `;
 }
 
 function checkAndShowEmptyState() {
@@ -137,20 +177,10 @@ function checkAndShowEmptyState() {
   const remaining = missionsEl.querySelectorAll('.mission-card:not(.closing)').length;
   if (remaining > 0) return;
 
-  missionsEl.innerHTML = `
-    <div class="missions-empty-state">
-      <div class="empty-checkmark">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
-      </div>
-      <div class="empty-title">Inbox zero, but for tabs.</div>
-      <div class="empty-subtitle">You're free.</div>
-    </div>
-  `;
+  missionsEl.innerHTML = renderMissionsEmptyState();
 
   const countEl = document.getElementById('openTabsSectionCount');
-  if (countEl) countEl.textContent = '0 domains';
+  if (countEl) countEl.textContent = uiT ? uiT('emptyTabsCount') : '0 domains';
 }
 
 function timeAgo(dateStr) {
@@ -161,22 +191,28 @@ function timeAgo(dateStr) {
   const diffHours = Math.floor((now - then) / 3600000);
   const diffDays = Math.floor((now - then) / 86400000);
 
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return diffMins + ' min ago';
-  if (diffHours < 24) return diffHours + ' hr' + (diffHours !== 1 ? 's' : '') + ' ago';
-  if (diffDays === 1) return 'yesterday';
-  return diffDays + ' days ago';
+  if (diffMins < 1) return uiT ? uiT('timeJustNow') : 'just now';
+  if (diffMins < 60) return uiT ? uiT('timeMinAgo', { count: diffMins }) : `${diffMins} min ago`;
+  if (diffHours < 24) {
+    if (!uiT) return `${diffHours} hr${diffHours !== 1 ? 's' : ''} ago`;
+    return diffHours === 1
+      ? uiT('timeHourAgo')
+      : uiT('timeHoursAgo', { count: diffHours });
+  }
+  if (diffDays === 1) return uiT ? uiT('timeYesterday') : 'yesterday';
+  return uiT ? uiT('timeDaysAgo', { count: diffDays }) : `${diffDays} days ago`;
 }
 
 function getGreeting() {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return uiT ? uiT('greetingMorning') : 'Good morning';
+  if (hour < 17) return uiT ? uiT('greetingAfternoon') : 'Good afternoon';
+  return uiT ? uiT('greetingEvening') : 'Good evening';
 }
 
 function getDateDisplay() {
-  return new Date().toLocaleDateString('en-US', {
+  const locale = uiLocale === 'zh-CN' ? 'zh-CN' : 'en-US';
+  return new Date().toLocaleDateString(locale, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
