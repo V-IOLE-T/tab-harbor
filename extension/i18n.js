@@ -80,6 +80,7 @@
       toastCouldNotSaveShortcut: 'Could not save shortcut',
       errorImageCompressionUnavailable: 'Image compression is unavailable',
       errorPleaseEnterValidUrl: 'Please enter a valid URL',
+      addByUrlTitle: 'Add by URL',
       shortcutEditTitle: 'Edit shortcut',
       shortcutAddTitle: 'Add shortcut',
       shortcutPreviewFallbackLabel: 'Shortcut',
@@ -123,6 +124,9 @@
       languageAuto: 'Auto',
       languageEnglish: 'English',
       languageChinese: '中文',
+      chromeTabGroupsLabel: 'Chrome tab groups',
+      toastChromeTabGroupsOn: 'Chrome tab groups on',
+      toastChromeTabGroupsOff: 'Chrome tab groups off',
     },
     'zh-CN': {
       emptyTitle: '标签页清零了。',
@@ -178,6 +182,7 @@
       toastCouldNotSaveShortcut: '无法保存快捷链接',
       errorImageCompressionUnavailable: '图片压缩不可用',
       errorPleaseEnterValidUrl: '请输入有效 URL',
+      addByUrlTitle: '通过 URL 添加',
       shortcutEditTitle: '编辑快捷链接',
       shortcutAddTitle: '添加快捷链接',
       shortcutPreviewFallbackLabel: '快捷链接',
@@ -221,6 +226,9 @@
       languageAuto: '自动',
       languageEnglish: 'English',
       languageChinese: '中文',
+      chromeTabGroupsLabel: 'Chrome 标签组',
+      toastChromeTabGroupsOn: '已启用 同步Chrome标签组',
+      toastChromeTabGroupsOff: '已禁用 同步Chrome标签组',
     },
   };
 
@@ -246,6 +254,12 @@
     'Search todos...': '搜索待办...',
     'No tasks yet. Capture the next step when something needs a follow-up.': '还没有任务。需要后续跟进时，把下一步记在这里。',
     'Open tabs': '打开的标签页',
+    'Add open tabs': '现有标签',
+    'Add by URL': '输入网址',
+    'Filter tabs...': '筛选标签页...',
+    'Filter open tabs': '筛选打开的标签页',
+    'Add selected': '添加选中项',
+    'Back': '返回',
     'Edit shortcut': '编辑快捷链接',
     'Close shortcut editor': '关闭快捷链接编辑器',
     'Label': '标签',
@@ -289,6 +303,8 @@
     'Add quick tab': '添加快捷链接',
     'Edit quick tab': '编辑快捷链接',
     'Remove quick tab': '删除快捷链接',
+    'Sync Chrome tab groups': '同步Chrome标签组',
+    'Homepages': '主页',
   };
 
   function i18nFormat(template, vars = {}) {

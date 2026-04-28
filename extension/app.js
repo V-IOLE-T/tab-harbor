@@ -8,9 +8,17 @@ const {
   ready: appI18nReady,
 } = globalThis.TabHarborI18n || {};
 
+const {
+  TabHarborConfigReady: appConfigReady,
+} = globalThis;
+
 async function initializeApp() {
   if (!appMountDashboardRuntime) {
     throw new Error('Tab Harbor dashboard runtime is unavailable');
+  }
+
+  if (appConfigReady && typeof appConfigReady.then === 'function') {
+    await appConfigReady;
   }
 
   if (appI18nReady && typeof appI18nReady.then === 'function') {

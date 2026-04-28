@@ -10,6 +10,8 @@ const runtimeJs = fs.readFileSync(path.join(__dirname, 'dashboard-runtime.js'), 
 const themeJs = fs.readFileSync(path.join(__dirname, 'theme-controls.js'), 'utf8');
 const drawerJs = fs.readFileSync(path.join(__dirname, 'drawer-manager.js'), 'utf8');
 const helperJs = fs.readFileSync(path.join(__dirname, 'ui-helpers.js'), 'utf8');
+const configJs = fs.readFileSync(path.join(__dirname, 'config.js'), 'utf8');
+const configLoaderJs = fs.readFileSync(path.join(__dirname, 'config-loader.js'), 'utf8');
 const appJs = [appEntryJs, runtimeJs, themeJs, drawerJs, helperJs].join('\n');
 
 test('move menu keeps hidden state until explicitly opened', () => {
@@ -68,6 +70,14 @@ test('group nav icons disable native image dragging', () => {
   assert.match(css, /\.group-nav-button,\s*\.group-nav-button \*\s*\{[\s\S]*-webkit-user-drag:\s*none;/);
 });
 
+test('icon fallback handling avoids inline event handlers', () => {
+  assert.doesNotMatch(appJs, /onerror=/);
+  assert.match(appJs, /data-fallback-src=/);
+  assert.match(helperJs, /document\.addEventListener\('error', event =>/);
+  assert.match(helperJs, /handleImageFallbackError/);
+  assert.match(helperJs, /setImageFallbackAttributes/);
+});
+
 test('index includes a back-to-top floating button', () => {
   assert.match(html, /id="backToTopBtn"/);
 });
@@ -86,6 +96,19 @@ test('index includes deferred drawer trigger and overlay', () => {
   assert.doesNotMatch(html, /deferredTriggerIconPath/);
   assert.doesNotMatch(html, /id="deferredTriggerCount"/);
   assert.doesNotMatch(html, /deferred-trigger-label/);
+});
+
+test('optional local config is loaded safely before app mount', () => {
+  assert.match(html, /<script src="config\.js"><\/script>/);
+  assert.match(html, /<script src="config-loader\.js"><\/script>/);
+  assert.doesNotMatch(html, /<script src="config\.local\.js"><\/script>/);
+  assert.match(configJs, /LOCAL_LANDING_PAGE_PATTERNS/);
+  assert.match(configJs, /LOCAL_CUSTOM_GROUPS/);
+  assert.match(configLoaderJs, /TabHarborConfigReady/);
+  assert.match(configLoaderJs, /script\.src = 'config\.local\.js'/);
+  assert.match(configLoaderJs, /script\.onerror = \(\) => resolve\(\)/);
+  assert.match(appEntryJs, /TabHarborConfigReady/);
+  assert.match(appEntryJs, /await appConfigReady/);
 });
 
 test('manifest keeps only permissions required by the shipped runtime', () => {
@@ -336,6 +359,24 @@ test('quick tabs area renders shortcut cards and add button hooks', () => {
   assert.match(html, /Paste an image with Cmd\/Ctrl\+V while the editor is focused\./);
   assert.doesNotMatch(html, />Paste image<\/button>/);
   assert.match(html, /id="shortcutIconFileInput"/);
+  assert.match(html, /id="shortcutEditorBack"/);
+  assert.match(html, /id="tabPickerViewSwitch"/);
+  assert.match(html, /id="tabPickerTabsTab"/);
+  assert.match(html, /id="tabPickerUrlTab"/);
+  assert.match(html, /id="tabPickerEditorHost"/);
+  assert.match(themeJs, /let tabPickerMode = 'tabs';/);
+  assert.match(themeJs, /function setTabPickerMode\(nextMode, \{ focus = true \} = \{\}\)/);
+  assert.match(themeJs, /if \(action === 'switch-tab-picker-view'\) \{[\s\S]*setTabPickerMode\(actionEl\.dataset\.view \|\| 'tabs'\);/);
+  assert.match(themeJs, /function mountShortcutEditorInTabPicker\(\)/);
+  assert.match(themeJs, /elements\.form\.classList\.add\('is-tab-picker-pane'\)/);
+  assert.match(themeJs, /if \(tabPickerMode === 'url'\) \{[\s\S]*openShortcutEditor\(null, tabPickerFocusReturnEl \|\| document\.activeElement, \{/);
+  assert.match(themeJs, /function closeShortcutEditor\(\{ restoreFocus = true \} = \{\}\)/);
+  assert.match(themeJs, /function syncFormControlValue\(element, nextValue\) \{[\s\S]*element\.dataset\.composing === 'true'/);
+  assert.match(themeJs, /document\.addEventListener\('compositionstart', \(e\) => \{/);
+  assert.match(themeJs, /document\.addEventListener\('compositionend', \(e\) => \{/);
+  assert.match(css, /\.tab-picker-view-switch\s*\{/);
+  assert.match(css, /\.tab-picker-search-wrap\[hidden\],[\s\S]*\.tab-picker-list\[hidden\],[\s\S]*\.tab-picker-editor-host\[hidden\]/);
+  assert.match(css, /\.shortcut-editor-form\.is-tab-picker-pane\s*\{/);
   const manifest = fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8');
   assert.match(manifest, /"clipboardRead"/);
 });
@@ -383,6 +424,16 @@ test('quick shortcuts support drag reordering with persisted order and drag prev
   assert.match(css, /\.quick-shortcut-card\.is-drag-ghost\s*\{[\s\S]*position:\s*fixed;[\s\S]*height:\s*var\(--drag-height, auto\);[\s\S]*pointer-events:\s*none;/);
   assert.match(css, /\.quick-shortcut-card\.is-drag-ghost \.quick-shortcut-open\s*\{[\s\S]*transform:\s*none;[\s\S]*transition:\s*none;/);
   assert.match(css, /\.quick-shortcut-slot\s*\{[\s\S]*width:\s*76px;[\s\S]*min-height:\s*56px;[\s\S]*pointer-events:\s*none;/);
+});
+
+test('quick shortcut add flows keep toast actions clickable and avoid stale duplicate state', () => {
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+
+  assert.match(css, /\.toast\.visible\s*\{[\s\S]*pointer-events:\s*auto;/);
+  assert.match(themeJs, /async function removeQuickShortcutById\(shortcutId\)\s*\{/);
+  assert.match(themeJs, /showToast\('Tab added — undo\?',\s*\{[\s\S]*await removeQuickShortcutById\(nextShortcut\.id\);[\s\S]*await renderQuickShortcuts\(\);[\s\S]*\}\s*,?\s*\}\s*\);/);
+  assert.match(themeJs, /const existingUrls = new Set\(shortcuts\.map\(s => s\.url\)\);[\s\S]*const shortcutUrl = tab\.url \|\| '';/);
+  assert.match(themeJs, /if \(existingUrls\.has\(shortcutUrl\)\) continue;[\s\S]*newShortcuts\.push\(\{[\s\S]*url: shortcutUrl,[\s\S]*\}\);[\s\S]*existingUrls\.add\(shortcutUrl\);/);
 });
 
 test('collapsed drawer triggers use compact neutral frames with theme-ready tokens', () => {
@@ -479,6 +530,12 @@ test('interactive controls keep button semantics and reduced-motion support', ()
   assert.match(appJs, /behavior:\s*prefersReducedMotion\(\) \? 'auto' : 'smooth'/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /grid-template-columns:\s*repeat\(auto-fit, minmax\(128px, 1fr\)\);/);
+});
+
+test('quick shortcuts overwrite the current Tab Harbor tab instead of focusing another tab or opening a new one', () => {
+  assert.match(runtimeJs, /async function navigateCurrentTabToUrl\(url\)\s*\{[\s\S]*chrome\.tabs\.getCurrent\(\)[\s\S]*chrome\.tabs\.update\(currentTab\.id,\s*\{\s*url,\s*active:\s*true\s*\}\)[\s\S]*chrome\.tabs\.query\(\{\s*active:\s*true,\s*currentWindow:\s*true,\s*\}\)[\s\S]*chrome\.tabs\.update\(activeTab\.id,\s*\{\s*url,\s*active:\s*true\s*\}\)/);
+  assert.match(runtimeJs, /async function openOrFocusUrl\(url\)\s*\{\s*if \(!url\) return false;\s*await navigateCurrentTabToUrl\(url\);\s*return true;\s*\}/);
+  assert.match(runtimeJs, /const fallbackUrl = `https:\/\/www\.google\.com\/search\?q=\$\{encodeURIComponent\(text\)\}`;\s*await navigateCurrentTabToUrl\(fallbackUrl\);/);
 });
 
 test('keyboard focus receives explicit visible treatment', () => {

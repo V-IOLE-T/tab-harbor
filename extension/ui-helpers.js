@@ -128,11 +128,80 @@ function animateCardOut(card) {
   }, 300);
 }
 
-function showToast(message) {
+function showToast(message, { action } = {}) {
   const toast = document.getElementById('toast');
-  document.getElementById('toastText').textContent = message;
+  const toastText = document.getElementById('toastText');
+  const toastAction = document.getElementById('toastAction');
+
+  toastText.textContent = message;
+
+  if (action) {
+    toastAction.textContent = action.label;
+    toastAction.hidden = false;
+    toastAction.onclick = async () => {
+      try {
+        await Promise.resolve(action.fn());
+      } catch (error) {
+        console.error('Toast action failed:', error);
+      } finally {
+        toast.classList.remove('visible');
+      }
+    };
+  } else {
+    toastAction.hidden = true;
+    toastAction.onclick = null;
+  }
+
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2500);
+}
+
+function setImageFallbackAttributes(imgEl, fallbackUrl = '') {
+  if (!imgEl) return;
+  if (fallbackUrl) {
+    imgEl.dataset.fallbackSrc = String(fallbackUrl);
+  } else {
+    delete imgEl.dataset.fallbackSrc;
+  }
+  delete imgEl.dataset.fallbackApplied;
+}
+
+function revealImageFallback(imgEl) {
+  if (!imgEl) return;
+  imgEl.style.display = 'none';
+  const sibling = imgEl.nextElementSibling;
+  if (!sibling) return;
+  if (
+    sibling.classList.contains('group-nav-fallback') ||
+    sibling.classList.contains('chip-favicon-fallback') ||
+    sibling.classList.contains('inline-favicon-fallback') ||
+    sibling.classList.contains('quick-shortcut-fallback')
+  ) {
+    sibling.style.display = sibling.classList.contains('inline-favicon-fallback') ? 'inline-flex' : 'flex';
+  }
+}
+
+function handleImageFallbackError(imgEl) {
+  if (!imgEl) return;
+  const fallbackUrl = String(imgEl.dataset.fallbackSrc || '').trim();
+
+  if (fallbackUrl && imgEl.dataset.fallbackApplied !== 'true') {
+    imgEl.dataset.fallbackApplied = 'true';
+    imgEl.src = fallbackUrl;
+    return;
+  }
+
+  revealImageFallback(imgEl);
+}
+
+if (!globalThis.__tabHarborImageFallbackBound) {
+  document.addEventListener('error', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (!('fallbackSrc' in target.dataset)) return;
+    handleImageFallbackError(target);
+  }, true);
+  globalThis.__tabHarborImageFallbackBound = true;
 }
 
 function renderMissionsEmptyState() {

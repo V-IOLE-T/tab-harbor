@@ -227,13 +227,19 @@
     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
   </svg>
   <span id="toastText"></span>
+  <button class="toast-action" id="toastAction" type="button" hidden></button>
 </div>
 
 <div class="shortcut-editor-backdrop" id="shortcutEditorBackdrop" hidden></div>
 <div class="shortcut-editor" id="shortcutEditor" hidden role="dialog" aria-modal="true" aria-labelledby="shortcutEditorTitle">
   <form class="shortcut-editor-form" id="shortcutEditorForm">
     <div class="shortcut-editor-header">
-      <div>
+      <div class="shortcut-editor-header-main">
+        <button class="shortcut-editor-back" id="shortcutEditorBack" type="button" data-action="return-to-tab-picker" aria-label="Back" hidden>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m15.75 19.5-7.5-7.5 7.5-7.5" />
+          </svg>
+        </button>
         <h2 class="shortcut-editor-title" id="shortcutEditorTitle">Edit shortcut</h2>
       </div>
       <button class="shortcut-editor-close" type="button" data-action="close-shortcut-editor" aria-label="Close shortcut editor">
@@ -299,15 +305,46 @@
   </form>
 </div>
 
+<div class="tab-picker-backdrop" id="tabPickerBackdrop" hidden></div>
+<div class="tab-picker" id="tabPicker" hidden role="dialog" aria-label="Add open tabs to quick shortcuts" aria-modal="true">
+  <div class="tab-picker-header">
+    <div class="drawer-title-switch tab-picker-view-switch" id="tabPickerViewSwitch" role="tablist" aria-label="Add shortcut views">
+      <button class="drawer-title-btn is-active" id="tabPickerTabsTab" type="button" role="tab" aria-selected="true" aria-controls="tabPickerTabsPane" data-action="switch-tab-picker-view" data-view="tabs">Add open tabs</button>
+      <button class="drawer-title-btn" id="tabPickerUrlTab" type="button" role="tab" aria-selected="false" aria-controls="tabPickerUrlPane" data-action="switch-tab-picker-view" data-view="url">Add by URL</button>
+    </div>
+    <button class="tab-picker-close" type="button" data-action="close-tab-picker" aria-label="Close">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+    </button>
+  </div>
+  <div class="tab-picker-search-wrap" id="tabPickerSearchWrap">
+    <svg class="tab-picker-search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.6-5.4a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
+    <input
+      class="tab-picker-search"
+      id="tabPickerSearch"
+      type="search"
+      placeholder="Filter tabs..."
+      autocomplete="off"
+      aria-label="Filter open tabs"
+    >
+  </div>
+  <div class="tab-picker-list" id="tabPickerList"></div>
+  <div class="tab-picker-editor-host" id="tabPickerEditorHost" hidden></div>
+  <div class="tab-picker-footer" id="tabPickerFooter" hidden>
+    <span class="tab-picker-footer-count" id="tabPickerFooterCount"></span>
+    <button class="tab-picker-footer-add" type="button" data-action="add-selected-tabs">Add selected</button>
+    <button class="tab-picker-footer-clear" type="button" data-action="clear-tab-picker-selection">Clear</button>
+  </div>
+</div>
+
 <button class="back-to-top" id="backToTopBtn" type="button" aria-label="Back to top" title="Back to top">
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
   </svg>
 </button>
 
-<!-- Personal config (gitignored) — defines LOCAL_LANDING_PAGE_PATTERNS etc. -->
-<!-- If the file doesn't exist, that's fine — app.js uses sensible defaults. -->
-<script src="config.local.js"></script>
+<!-- Checked-in defaults + optional local overrides -->
+<script src="config.js"></script>
+<script src="config-loader.js"></script>
 
 <!-- Shared icon helpers — real favicons first, then graceful fallbacks -->
 <script src="icon-utils.js"></script>
@@ -321,6 +358,8 @@
 <script src="ui-helpers.js"></script>
 <script src="theme-controls.js"></script>
 <script src="drawer-manager.js"></script>
+<script src="chrome-tab-groups-import.js"></script>
+<script src="chrome-tab-groups-sync.js"></script>
 <script src="dashboard-runtime.js"></script>
 
 <!-- Main dashboard logic — loads last so the DOM is ready -->

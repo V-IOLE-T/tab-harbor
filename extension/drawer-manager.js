@@ -450,6 +450,7 @@ function renderDeferredItem(item) {
   const faviconUrl = iconData.sources[0] || '';
   const fallbackUrl = iconData.sources[1] || '';
   const fallbackLabel = drawerGetFallbackLabel(item.title || item.url, iconData.hostname);
+  const safeFallbackUrl = fallbackUrl.replace(/"/g, '&quot;');
   const ago = timeAgo(item.savedAt);
   const dragHandle = !savedSearchQuery.trim()
     ? `<button class="drawer-reorder-handle" type="button" data-drag-handle="saved" aria-label="Drag to reorder saved page">
@@ -462,7 +463,7 @@ function renderDeferredItem(item) {
       <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
       <div class="deferred-info">
         <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
-          ${faviconUrl ? `<img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" onerror="handleIconError(this, '${fallbackUrl}')">` : ''}
+          ${faviconUrl ? `<img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" data-fallback-src="${safeFallbackUrl}">` : ''}
           <span class="inline-favicon-fallback"${faviconUrl ? ' style="display:none"' : ''}>${fallbackLabel}</span>${item.title || item.url}
         </a>
         <div class="deferred-meta">
