@@ -899,6 +899,23 @@ body.theme-tone-dark .deferred-shell {
   cursor: pointer;
 }
 
+.theme-menu-toggle-text {
+  padding-top: 0;
+  flex: 1 1 auto;
+}
+
+.theme-menu-toggle-button-row {
+  cursor: default;
+}
+
+.theme-menu-toggle-button-row .theme-toggle-switch {
+  border: 1px solid color-mix(in srgb, var(--workspace-accent-border) 40%, transparent);
+}
+
+.theme-menu-toggle-button-row .theme-menu-label {
+  cursor: default;
+}
+
 /* ---- Language options ---- */
 .theme-language-options {
   display: flex;

@@ -1536,12 +1536,6 @@ function renderGroupNavArea(groups) {
           </div>
         </div>
         <div class="theme-menu-section">
-          <div class="theme-menu-row">
-            <div class="theme-menu-label">${runtimeT ? runtimeT('hitokotoLabel') : '一言'}</div>
-            <button class="theme-toggle-switch ${(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled !== false) ? 'is-active' : ''}" type="button" data-action="toggle-hitokoto" aria-pressed="${(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled !== false) ? 'true' : 'false'}"></button>
-          </div>
-        </div>
-        <div class="theme-menu-section">
           <div class="theme-menu-row theme-menu-row-inline-range">
             <div class="theme-menu-label">${runtimeT ? runtimeT('surfaceDepth') : 'Surface depth'}</div>
             <input
@@ -1561,7 +1555,13 @@ function renderGroupNavArea(groups) {
           <label class="theme-menu-toggle-label">
             <input type="checkbox" data-action="toggle-chrome-tab-groups"${chromeTabGroupsEnabled ? ' checked' : ''} aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}">
             <span class="theme-menu-toggle-slider"></span>
-            <span class="theme-menu-label">${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}</span>
+            <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}</span>
+          </label>
+        </div>
+        <div class="theme-menu-section">
+          <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
+            <button class="theme-toggle-switch ${(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled !== false) ? 'is-active' : ''}" type="button" data-action="toggle-hitokoto" aria-pressed="${(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled !== false) ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('hitokotoLabel') : '一言'}"></button>
+            <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('hitokotoLabel') : '一言'}</span>
           </label>
         </div>
         <input type="file" id="themeBackgroundInput" accept="image/*" hidden>

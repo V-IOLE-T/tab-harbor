@@ -639,3 +639,14 @@ test('chrome tab group mode stays active while the toggle is on', () => {
     /initializeDashboardRuntime[\s\S]*setImportMode\(false\)/
   );
 });
+
+test('theme menu keeps chrome tab groups above hitokoto and uses left-aligned toggles', () => {
+  assert.match(
+    runtimeJs,
+    /<label class="theme-menu-toggle-label">[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*theme-menu-toggle-slider[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*Chrome tab groups[\s\S]*<\/label>[\s\S]*<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*class="theme-toggle-switch[\s\S]*data-action="toggle-hitokoto"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*一言/
+  );
+
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+  assert.match(css, /\.theme-menu-toggle-text\s*\{[\s\S]*padding-top:\s*0;[\s\S]*flex:\s*1 1 auto;/);
+  assert.match(css, /\.theme-menu-toggle-button-row\s*\{[\s\S]*cursor:\s*default;/);
+});
