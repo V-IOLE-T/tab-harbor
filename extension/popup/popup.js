@@ -19,6 +19,29 @@ const popupState = {
   groupOrder: { sessionOrder: [], pinnedOrder: [], pinEnabled: false },
 };
 
+// Test exposure
+globalThis.popupState = popupState;
+globalThis.buildPopupTabGroups = buildPopupTabGroups;
+globalThis.getGroupDisplayLabel = getGroupDisplayLabel;
+globalThis.escapeAttr = escapeAttr;
+globalThis.friendlyDomain = friendlyDomain;
+globalThis.stripTitleNoise = stripTitleNoise;
+globalThis.getTabLabel = getTabLabel;
+globalThis.isLandingPage = isLandingPage;
+globalThis.matchCustomGroup = matchCustomGroup;
+globalThis.renderShortcutCard = renderShortcutCard;
+globalThis.renderTabGroup = renderTabGroup;
+globalThis.renderGroupNav = renderGroupNav;
+globalThis._resetPopupState = () => {
+  popupState.openTabs = [];
+  popupState.tabGroups = [];
+  popupState.sessionGroups = { groups: [], assignments: {} };
+  popupState.groupOrder = { sessionOrder: [], pinnedOrder: [], pinEnabled: false };
+  popupState.quickShortcuts = [];
+};
+globalThis._skipLoadPopupState = false;
+globalThis._popupIcons = popupIcons;
+
 function escapeAttr(value = '') {
   return popupIcons.escapeHtmlAttribute ? popupIcons.escapeHtmlAttribute(value) : String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -87,6 +110,7 @@ function getCustomGroups() {
 function matchCustomGroup(url) {
   try {
     const parsed = new URL(url);
+    if (parsed.protocol === 'file:') return null;
     return getCustomGroups().find(r => {
       const hostMatch = r.hostname
         ? parsed.hostname === r.hostname
@@ -101,6 +125,7 @@ function matchCustomGroup(url) {
 }
 
 async function loadPopupState() {
+  if (globalThis._skipLoadPopupState) return;
   const shortcutsGetter = popupTheme.getQuickShortcuts;
   if (typeof shortcutsGetter === 'function') {
     popupState.quickShortcuts = await shortcutsGetter();
@@ -301,7 +326,8 @@ function renderShortcutCard(shortcut, index) {
 }
 
 function getGroupDisplayLabel(group) {
-  const t = popupI18n.t ? (key => popupI18n.t(key)) : (key => key);
+  const i18n = globalThis.TabHarborI18n || {};
+  const t = i18n.t ? (key => i18n.t(key)) : (key => key);
   switch (group.kind) {
     case 'landing':   return t('homepagesLabel');
     case 'session':   return group.label;

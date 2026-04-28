@@ -2012,7 +2012,7 @@ async function loadThemePreferences() {
 function syncPopupTheme(targetDoc) {
   const root = targetDoc?.documentElement;
   if (!root) return;
-  const theme = getThemeDefinition(themePreferences.themeId);
+  const theme = getResolvedThemeDefinition(themePreferences);
   const opacityVars = computeThemeOpacityVars(themePreferences.surfaceOpacity);
 
   Object.entries(theme.vars).forEach(([name, value]) => {
