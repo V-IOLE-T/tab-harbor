@@ -12,14 +12,69 @@ globalThis.TabHarborDashboardRuntime = null;
 globalThis.chrome = { runtime: { lastError: null }, storage: { local: { get: async () => ({}), set: async () => {} } } };
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 globalThis.sessionStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+globalThis.window = {
+  matchMedia: query => ({
+    media: query,
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }),
+};
 
 require('./theme-controls.js');
 
 const {
   filterRealTabs,
+  getResolvedThemeDefinition,
+  getResolvedTone,
   normalizeShortcutUrl,
   normalizeQuickShortcuts,
+  normalizeThemePreferences,
 } = globalThis.TabOutThemeControls;
+
+// ---- normalizeThemePreferences / resolved theme ----
+
+test('normalizeThemePreferences migrates legacy midnight to dark mist', () => {
+  const result = normalizeThemePreferences({ themeId: 'midnight', surfaceOpacity: 19 });
+  assert.equal(result.mode, 'dark');
+  assert.equal(result.paletteId, 'mist');
+  assert.equal(result.surfaceOpacity, 19);
+});
+
+test('normalizeThemePreferences migrates legacy light theme ids to light palette families', () => {
+  const result = normalizeThemePreferences({ themeId: 'sage' });
+  assert.equal(result.mode, 'light');
+  assert.equal(result.paletteId, 'sage');
+});
+
+test('normalizeThemePreferences keeps explicit mode and palette values', () => {
+  const result = normalizeThemePreferences({ mode: 'system', paletteId: 'blush', surfaceOpacity: 9 });
+  assert.equal(result.mode, 'system');
+  assert.equal(result.paletteId, 'blush');
+  assert.equal(result.surfaceOpacity, 9);
+});
+
+test('getResolvedTone follows system preference when mode is system', () => {
+  const originalMatchMedia = globalThis.window.matchMedia;
+  globalThis.window.matchMedia = query => ({
+    media: query,
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  });
+  try {
+    assert.equal(getResolvedTone({ mode: 'system' }), 'dark');
+  } finally {
+    globalThis.window.matchMedia = originalMatchMedia;
+  }
+});
+
+test('getResolvedThemeDefinition resolves dark tokens from palette family', () => {
+  const theme = getResolvedThemeDefinition({ mode: 'dark', paletteId: 'paper' });
+  assert.equal(theme.name, 'Paper');
+  assert.equal(theme.tone, 'dark');
+  assert.equal(theme.vars['--paper'], '#1a1613');
+});
 
 // ---- filterRealTabs ----
 

@@ -1509,6 +1509,12 @@ function renderGroupNavArea(groups) {
       </button>
       <div class="theme-menu" id="themeMenuPanel" hidden role="dialog" aria-label="${runtimeT ? runtimeT('deskSettingsPanel') : 'Desk settings panel'}">
         <div class="theme-menu-section">
+          <div class="theme-menu-row theme-menu-row-inline-choices">
+            <div class="theme-menu-label">${runtimeT ? runtimeT('appearanceMode') : 'Appearance mode'}</div>
+            <div class="theme-mode-options" id="themeModeOptions" role="group" aria-label="${runtimeT ? runtimeT('appearanceMode') : 'Appearance mode'}"></div>
+          </div>
+        </div>
+        <div class="theme-menu-section">
           <div class="theme-menu-label">${runtimeT ? runtimeT('deskPalette') : 'Desk palette'}</div>
           <div class="theme-options" id="themeOptions"></div>
         </div>
@@ -1520,11 +1526,13 @@ function renderGroupNavArea(groups) {
           </div>
         </div>
         <div class="theme-menu-section">
-          <div class="theme-menu-label">${runtimeT ? runtimeT('languageLabel') : 'Language'}</div>
-          <div class="theme-language-options" role="group" aria-label="${runtimeT ? runtimeT('languageLabel') : 'Language'}">
-            <button class="theme-language-option ${languagePreference === 'auto' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="auto" aria-pressed="${languagePreference === 'auto'}">${runtimeT ? runtimeT('languageAuto') : 'Auto'}</button>
-            <button class="theme-language-option ${languagePreference === 'en' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="en" aria-pressed="${languagePreference === 'en'}">${runtimeT ? runtimeT('languageEnglish') : 'English'}</button>
-            <button class="theme-language-option ${languagePreference === 'zh-CN' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="zh-CN" aria-pressed="${languagePreference === 'zh-CN'}">${runtimeT ? runtimeT('languageChinese') : '中文'}</button>
+          <div class="theme-menu-row theme-menu-row-inline-choices">
+            <div class="theme-menu-label">${runtimeT ? runtimeT('languageLabel') : 'Language'}</div>
+            <div class="theme-language-options" role="group" aria-label="${runtimeT ? runtimeT('languageLabel') : 'Language'}">
+              <button class="theme-language-option ${languagePreference === 'auto' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="auto" aria-pressed="${languagePreference === 'auto'}">${runtimeT ? runtimeT('languageAuto') : 'Auto'}</button>
+              <button class="theme-language-option ${languagePreference === 'en' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="en" aria-pressed="${languagePreference === 'en'}">${runtimeT ? runtimeT('languageEnglish') : 'English'}</button>
+              <button class="theme-language-option ${languagePreference === 'zh-CN' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="zh-CN" aria-pressed="${languagePreference === 'zh-CN'}">${runtimeT ? runtimeT('languageChinese') : '中文'}</button>
+            </div>
           </div>
         </div>
         <div class="theme-menu-section">
@@ -1534,20 +1542,20 @@ function renderGroupNavArea(groups) {
           </div>
         </div>
         <div class="theme-menu-section">
-          <div class="theme-menu-row">
+          <div class="theme-menu-row theme-menu-row-inline-range">
             <div class="theme-menu-label">${runtimeT ? runtimeT('surfaceDepth') : 'Surface depth'}</div>
+            <input
+              class="theme-range"
+              id="themeTransparencyRange"
+              type="range"
+              aria-label="${runtimeT ? runtimeT('surfaceDepth') : 'Surface depth'}"
+              min="2"
+              max="60"
+              step="1"
+              value="14"
+            >
             <div class="theme-range-value" id="themeTransparencyValue">14%</div>
           </div>
-          <input
-            class="theme-range"
-            id="themeTransparencyRange"
-            type="range"
-            aria-label="${runtimeT ? runtimeT('surfaceDepth') : 'Surface depth'}"
-            min="2"
-            max="60"
-            step="1"
-            value="14"
-          >
         </div>
         <div class="theme-menu-section">
           <label class="theme-menu-toggle-label">
@@ -1841,10 +1849,26 @@ document.addEventListener('click', async (e) => {
   }
 
   if (action === 'select-theme') {
-    const themeId = actionEl.dataset.themeId || 'paper';
-    await saveThemePreferences({ themeId });
+    const paletteId = actionEl.dataset.paletteId || 'paper';
+    await saveThemePreferences({ paletteId });
     setThemeMenuOpen(false, { restoreFocus: true });
     showToast(runtimeT ? runtimeT('toastThemeUpdated') : 'Theme updated');
+    return;
+  }
+
+  if (action === 'select-theme-mode') {
+    const mode = actionEl.dataset.themeMode || 'system';
+    await saveThemePreferences({ mode });
+    setThemeMenuOpen(false, { restoreFocus: true });
+    const modeLabelKey = {
+      system: 'themeModeSystem',
+      light: 'themeModeLight',
+      dark: 'themeModeDark',
+    }[mode] || 'themeModeSystem';
+    const modeLabel = runtimeT
+      ? runtimeT(modeLabelKey)
+      : mode;
+    showToast(runtimeT ? runtimeT('toastThemeModeUpdated', { mode: modeLabel }) : `Appearance mode: ${modeLabel}`);
     return;
   }
 

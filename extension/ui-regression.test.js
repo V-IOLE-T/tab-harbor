@@ -183,6 +183,7 @@ test('deferred drawer styles and behavior are wired up', () => {
   assert.match(appJs, /toggle-todo-search/);
   assert.match(appJs, /toggle-theme-menu/);
   assert.match(appJs, /select-theme/);
+  assert.match(appJs, /select-theme-mode/);
   assert.match(appJs, /themeBackgroundInput/);
   assert.match(appJs, /loadThemePreferences/);
   assert.match(appJs, /e\.key === 'Escape' && deferredPanelOpen/);
@@ -228,6 +229,8 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.header-search-shell:focus-within\s*\{/);
   assert.match(css, /\.header-search-input\s*\{/);
   assert.match(css, /\.theme-menu\s*\{/);
+  assert.match(css, /\.theme-mode-options\s*\{/);
+  assert.match(css, /\.theme-mode-option\s*\{/);
   assert.match(css, /\.theme-range\s*\{/);
   assert.match(css, /\.theme-option\.is-active\s*\{/);
   assert.match(css, /\.header-theme-trigger\s*\{[\s\S]*background:\s*transparent;/);
@@ -243,6 +246,7 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(appJs, /id="themeMenuTrigger"/);
   assert.match(appJs, /id="headerPinToggle"/);
   assert.match(appJs, /id="themeMenuPanel"/);
+  assert.match(appJs, /id="themeModeOptions"/);
   assert.match(appJs, /id="themeBackgroundInput"/);
   assert.match(appJs, /id="themeTransparencyRange"/);
   assert.match(appJs, /id="themeTransparencyValue"/);
@@ -525,11 +529,24 @@ test('interactive controls keep button semantics and reduced-motion support', ()
 
   assert.match(themeJs, /class="quick-shortcut-open" type="button"/);
   assert.match(themeJs, /class="quick-shortcut-remove" type="button"/);
-  assert.match(themeJs, /aria-pressed="\$\{themePreferences\.themeId === id\}"/);
+  assert.match(themeJs, /aria-pressed="\$\{themePreferences\.paletteId === id\}"/);
+  assert.match(themeJs, /aria-pressed="\$\{themePreferences\.mode === id\}"/);
   assert.match(themeJs, /function prefersReducedMotion\(\)/);
   assert.match(appJs, /behavior:\s*prefersReducedMotion\(\) \? 'auto' : 'smooth'/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /grid-template-columns:\s*repeat\(auto-fit, minmax\(128px, 1fr\)\);/);
+});
+
+test('theme state uses separate mode and palette preferences', () => {
+  assert.match(themeJs, /mode:\s*'system'/);
+  assert.match(themeJs, /paletteId:\s*'paper'/);
+  assert.doesNotMatch(themeJs, /themePreferences = \{[\s\S]*themeId:/);
+  assert.match(themeJs, /resolvedTone/);
+  assert.match(themeJs, /theme-tone-dark/);
+  assert.match(themeJs, /theme-tone-light/);
+  assert.match(appJs, /themeModeSystem/);
+  assert.match(appJs, /themeModeLight/);
+  assert.match(appJs, /themeModeDark/);
 });
 
 test('quick shortcuts overwrite the current Tab Harbor tab instead of focusing another tab or opening a new one', () => {

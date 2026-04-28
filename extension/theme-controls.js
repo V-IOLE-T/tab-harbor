@@ -56,11 +56,27 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-const THEMES = {
+const THEME_MODE_ORDER = ['system', 'light', 'dark'];
+const THEME_PALETTE_ORDER = ['paper', 'sage', 'mist', 'blush'];
+const VALID_THEME_MODES = new Set(THEME_MODE_ORDER);
+const VALID_THEME_PALETTES = new Set(THEME_PALETTE_ORDER);
+const THEME_MODE_LABEL_KEYS = {
+  system: 'themeModeSystem',
+  light: 'themeModeLight',
+  dark: 'themeModeDark',
+};
+const LEGACY_THEME_MIGRATION = {
+  paper: { mode: 'light', paletteId: 'paper' },
+  sage: { mode: 'light', paletteId: 'sage' },
+  mist: { mode: 'light', paletteId: 'mist' },
+  blush: { mode: 'light', paletteId: 'blush' },
+  midnight: { mode: 'dark', paletteId: 'mist' },
+};
+const THEME_FAMILIES = {
   paper: {
     name: 'Paper',
     meta: 'Warm neutral',
-    vars: {
+    light: {
       '--ink': '#1a1613',
       '--paper': '#f8f5f0',
       '--warm-gray': '#e8e2da',
@@ -78,11 +94,29 @@ const THEMES = {
       '--status-abandoned': '#b35a5a',
       '--card-bg': '#fffdf9',
     },
+    dark: {
+      '--ink': '#e8e2da',
+      '--paper': '#1a1613',
+      '--warm-gray': '#2d2722',
+      '--muted': '#7a726a',
+      '--accent-amber': '#d4854a',
+      '--accent-sage': '#6a8a72',
+      '--accent-slate': '#6a7b8a',
+      '--accent-rose': '#b37a7a',
+      '--workspace-accent': '#a0754f',
+      '--workspace-accent-soft': '#2d2722',
+      '--workspace-accent-border': '#5a4a3a',
+      '--workspace-accent-contrast': '#f8f5f0',
+      '--status-active': '#5a9a6a',
+      '--status-cooling': '#c89a3a',
+      '--status-abandoned': '#c36a6a',
+      '--card-bg': '#231f1a',
+    },
   },
   sage: {
     name: 'Sage',
     meta: 'Soft green',
-    vars: {
+    light: {
       '--ink': '#172018',
       '--paper': '#eef2eb',
       '--warm-gray': '#dbe3d7',
@@ -100,11 +134,29 @@ const THEMES = {
       '--status-abandoned': '#996760',
       '--card-bg': '#fafcf8',
     },
+    dark: {
+      '--ink': '#d8e3d7',
+      '--paper': '#172018',
+      '--warm-gray': '#252d25',
+      '--muted': '#6a7a6a',
+      '--accent-amber': '#9a8a5a',
+      '--accent-sage': '#6a9a7a',
+      '--accent-slate': '#6a7a8a',
+      '--accent-rose': '#9a7a7a',
+      '--workspace-accent': '#5a8a6a',
+      '--workspace-accent-soft': '#252d25',
+      '--workspace-accent-border': '#3a4a3a',
+      '--workspace-accent-contrast': '#eef2eb',
+      '--status-active': '#5a9a7a',
+      '--status-cooling': '#b89a4a',
+      '--status-abandoned': '#c36a6a',
+      '--card-bg': '#1e261e',
+    },
   },
   mist: {
     name: 'Mist',
     meta: 'Cool neutral',
-    vars: {
+    light: {
       '--ink': '#161c21',
       '--paper': '#eef2f5',
       '--warm-gray': '#d8dee5',
@@ -122,11 +174,29 @@ const THEMES = {
       '--status-abandoned': '#93636c',
       '--card-bg': '#fafcfd',
     },
+    dark: {
+      '--ink': '#d8dee5',
+      '--paper': '#161c21',
+      '--warm-gray': '#252d35',
+      '--muted': '#5d6771',
+      '--accent-amber': '#a08a6a',
+      '--accent-sage': '#6a8a7a',
+      '--accent-slate': '#6a8a9a',
+      '--accent-rose': '#9a7a7a',
+      '--workspace-accent': '#6a8a9a',
+      '--workspace-accent-soft': '#252d35',
+      '--workspace-accent-border': '#3a4a5a',
+      '--workspace-accent-contrast': '#f8f5f0',
+      '--status-active': '#5a9a7a',
+      '--status-cooling': '#c8a83a',
+      '--status-abandoned': '#c36a6a',
+      '--card-bg': '#1c232b',
+    },
   },
   blush: {
     name: 'Blush',
     meta: 'Soft clay',
-    vars: {
+    light: {
       '--ink': '#201716',
       '--paper': '#f6efec',
       '--warm-gray': '#e5d8d2',
@@ -144,47 +214,51 @@ const THEMES = {
       '--status-abandoned': '#a96262',
       '--card-bg': '#fffaf7',
     },
-  },
-  midnight: {
-    name: 'Night',
-    meta: 'Dark mode',
-    vars: {
+    dark: {
       '--ink': '#e8e2da',
-      '--paper': '#0c1821',
-      '--warm-gray': '#2a2420',
-      '--muted': '#7a7169',
-      '--accent-amber': '#82aae8',
-      '--accent-sage': '#6b8f75',
-      '--accent-slate': '#6b7f8f',
-      '--accent-rose': '#c46b6b',
-      '--workspace-accent': '#82aae8',
-      '--workspace-accent-soft': '#152535',
-      '--workspace-accent-border': '#3a3430',
-      '--workspace-accent-contrast': '#1a1613',
-      '--status-active': '#4d8f5a',
-      '--status-cooling': '#c4993e',
-      '--status-abandoned': '#c46b6b',
-      '--card-bg': '#142031',
+      '--paper': '#201716',
+      '--warm-gray': '#332a2a',
+      '--muted': '#8a7a7a',
+      '--accent-amber': '#a06d4f',
+      '--accent-sage': '#6a7a6a',
+      '--accent-slate': '#6a7a8a',
+      '--accent-rose': '#c37a7a',
+      '--workspace-accent': '#a5656f',
+      '--workspace-accent-soft': '#332a2a',
+      '--workspace-accent-border': '#5a4a4a',
+      '--workspace-accent-contrast': '#f6efec',
+      '--status-active': '#5a9a7a',
+      '--status-cooling': '#b89a4a',
+      '--status-abandoned': '#c36a6a',
+      '--card-bg': '#281f1f',
     },
   },
 };
 
 let themePreferences = {
-  themeId: 'paper',
+  mode: 'system',
+  paletteId: 'paper',
   customBackground: '',
   surfaceOpacity: 14,
   hitokotoEnabled: true,
 };
 
+let systemThemeMediaQuery = null;
+let systemThemeListener = null;
+
 function normalizeThemePreferences(input) {
   const next = input && typeof input === 'object' ? input : {};
-  const themeId = String(next.themeId || 'paper');
+  const legacyThemeId = String(next.themeId || '');
+  const migrated = LEGACY_THEME_MIGRATION[legacyThemeId] || null;
+  const rawMode = String(next.mode || migrated?.mode || 'system');
+  const rawPaletteId = String(next.paletteId || migrated?.paletteId || 'paper');
   const rawOpacity = Number(next.surfaceOpacity);
   const surfaceOpacity = Number.isFinite(rawOpacity)
     ? Math.min(60, Math.max(2, Math.round(rawOpacity)))
     : 14;
   return {
-    themeId: THEMES[themeId] ? themeId : 'paper',
+    mode: VALID_THEME_MODES.has(rawMode) ? rawMode : 'system',
+    paletteId: VALID_THEME_PALETTES.has(rawPaletteId) ? rawPaletteId : 'paper',
     customBackground: typeof next.customBackground === 'string' ? next.customBackground : '',
     surfaceOpacity,
     hitokotoEnabled: next.hitokotoEnabled !== false,
@@ -254,8 +328,64 @@ function isTransientClipboardReference(value) {
   );
 }
 
-function getThemeDefinition(themeId) {
-  return THEMES[themeId] || THEMES.paper;
+function getSystemThemeMode() {
+  return Boolean(window.matchMedia?.('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+}
+
+function getResolvedTone(preferences = themePreferences) {
+  const normalized = normalizeThemePreferences(preferences);
+  if (normalized.mode === 'system') {
+    return getSystemThemeMode();
+  }
+  return normalized.mode;
+}
+
+function getThemeFamilyDefinition(paletteId) {
+  return THEME_FAMILIES[paletteId] || THEME_FAMILIES.paper;
+}
+
+function getResolvedThemeDefinition(preferences = themePreferences) {
+  const normalized = normalizeThemePreferences(preferences);
+  const resolvedTone = getResolvedTone(normalized);
+  const family = getThemeFamilyDefinition(normalized.paletteId);
+  return {
+    id: normalized.paletteId,
+    name: family.name,
+    meta: family.meta,
+    tone: resolvedTone,
+    vars: family[resolvedTone],
+  };
+}
+
+function getPalettePreviewStyle(paletteId) {
+  const family = getThemeFamilyDefinition(paletteId);
+  return `--theme-paper:${family.light['--paper']};--theme-accent:${family.light['--accent-amber']};`;
+}
+
+function syncSystemThemeSubscription() {
+  if (systemThemeMediaQuery && systemThemeListener) {
+    if (typeof systemThemeMediaQuery.removeEventListener === 'function') {
+      systemThemeMediaQuery.removeEventListener('change', systemThemeListener);
+    } else if (typeof systemThemeMediaQuery.removeListener === 'function') {
+      systemThemeMediaQuery.removeListener(systemThemeListener);
+    }
+  }
+
+  systemThemeMediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)') || null;
+  systemThemeListener = null;
+  if (!systemThemeMediaQuery) return;
+
+  systemThemeListener = () => {
+    if (themePreferences.mode !== 'system') return;
+    applyThemePreferences();
+    renderThemeMenu();
+  };
+
+  if (typeof systemThemeMediaQuery.addEventListener === 'function') {
+    systemThemeMediaQuery.addEventListener('change', systemThemeListener);
+  } else if (typeof systemThemeMediaQuery.addListener === 'function') {
+    systemThemeMediaQuery.addListener(systemThemeListener);
+  }
 }
 
 function prefersReducedMotion() {
@@ -299,7 +429,7 @@ function hexToRgbChannels(hex) {
 function applyThemePreferences() {
   const root = document.documentElement;
   const body = document.body;
-  const theme = getThemeDefinition(themePreferences.themeId);
+  const theme = getResolvedThemeDefinition(themePreferences);
   const surfaceOpacity = themePreferences.surfaceOpacity;
   const borderOpacity = Math.max(8, surfaceOpacity);
   const badgeOpacity = Math.max(3, Math.round(surfaceOpacity * 0.28));
@@ -312,6 +442,10 @@ function applyThemePreferences() {
   root.style.setProperty('--custom-border-opacity', `${borderOpacity}%`);
   root.style.setProperty('--custom-badge-opacity', `${badgeOpacity}%`);
   root.style.setProperty('--custom-fallback-opacity', `${fallbackOpacity}%`);
+  if (body) {
+    body.classList.toggle('theme-tone-light', theme.tone === 'light');
+    body.classList.toggle('theme-tone-dark', theme.tone === 'dark');
+  }
 
   if (themePreferences.customBackground) {
     root.style.setProperty('--page-custom-background', `url("${themePreferences.customBackground}")`);
@@ -331,12 +465,13 @@ function applyThemePreferences() {
 
 function renderThemeMenu() {
   const trigger = document.getElementById('themeMenuTrigger');
+  const modeOptions = document.getElementById('themeModeOptions');
   const pinToggle = document.getElementById('headerPinToggle');
   const panel = document.getElementById('themeMenuPanel');
   const options = document.getElementById('themeOptions');
   const transparencyRange = document.getElementById('themeTransparencyRange');
   const transparencyValue = document.getElementById('themeTransparencyValue');
-  if (!trigger || !panel || !options || !transparencyRange || !transparencyValue) return;
+  if (!trigger || !panel || !modeOptions || !options || !transparencyRange || !transparencyValue) return;
 
   trigger.setAttribute('aria-expanded', String(themeMenuOpen));
   panel.hidden = !themeMenuOpen;
@@ -352,26 +487,39 @@ function renderThemeMenu() {
     pinToggle.setAttribute('aria-pressed', String(groupOrderState.pinEnabled));
   }
 
-  options.innerHTML = Object.entries(THEMES).map(([id, theme]) => `
+  modeOptions.innerHTML = THEME_MODE_ORDER.map(id => `
     <button
-      class="theme-option ${themePreferences.themeId === id ? 'is-active' : ''}"
+      class="theme-mode-option ${themePreferences.mode === id ? 'is-active' : ''}"
+      type="button"
+      data-action="select-theme-mode"
+      data-theme-mode="${id}"
+      aria-pressed="${themePreferences.mode === id}"
+    >${themeT ? themeT(THEME_MODE_LABEL_KEYS[id]) : id}</button>
+  `).join('');
+
+  options.innerHTML = THEME_PALETTE_ORDER.map(id => {
+    const family = getThemeFamilyDefinition(id);
+    return `
+    <button
+      class="theme-option ${themePreferences.paletteId === id ? 'is-active' : ''}"
       type="button"
       data-action="select-theme"
-      data-theme-id="${id}"
-      aria-pressed="${themePreferences.themeId === id}"
-      style="--theme-paper:${theme.vars['--paper']};--theme-accent:${theme.vars['--accent-amber']};"
+      data-palette-id="${id}"
+      aria-pressed="${themePreferences.paletteId === id}"
+      style="${getPalettePreviewStyle(id)}"
     >
       <span class="theme-option-main">
         <span class="theme-option-swatch" aria-hidden="true"></span>
         <span>
-          <span class="theme-option-name">${theme.name}</span>
+          <span class="theme-option-name">${family.name}</span>
         </span>
       </span>
       <span class="theme-option-check" aria-hidden="true">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
       </span>
     </button>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function getQuickShortcuts() {
@@ -1847,6 +1995,7 @@ document.addEventListener('click', (e) => {
 async function loadThemePreferences() {
   const stored = await chrome.storage.local.get(THEME_PREFERENCES_KEY);
   themePreferences = normalizeThemePreferences(stored[THEME_PREFERENCES_KEY]);
+  syncSystemThemeSubscription();
   applyThemePreferences();
   renderThemeMenu();
   return themePreferences;
@@ -1858,6 +2007,7 @@ async function saveThemePreferences(nextPreferences) {
     ...nextPreferences,
   });
   await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: themePreferences });
+  syncSystemThemeSubscription();
   applyThemePreferences();
   renderThemeMenu();
   return themePreferences;
@@ -1865,6 +2015,9 @@ async function saveThemePreferences(nextPreferences) {
 
 globalThis.TabOutThemeControls = {
   filterRealTabs,
+  getResolvedThemeDefinition,
+  getResolvedTone,
   normalizeShortcutUrl,
   normalizeQuickShortcuts,
+  normalizeThemePreferences,
 };

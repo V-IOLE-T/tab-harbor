@@ -86,6 +86,10 @@ body::before {
   z-index: 1;
 }
 
+body.theme-tone-dark::before {
+  opacity: 0.5;
+}
+
 .container {
   position: relative;
   z-index: 2;
@@ -596,6 +600,14 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
   gap: 10px;
 }
 
+.theme-menu-row-inline-choices {
+  align-items: flex-start;
+}
+
+.theme-menu-row-inline-range {
+  align-items: center;
+}
+
 .theme-menu-label {
   font-size: 10px;
   letter-spacing: 0.16em;
@@ -603,16 +615,22 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
   color: var(--muted);
   font-weight: 700;
   padding-left: 2px;
+  flex: 0 0 auto;
+  padding-top: 4px;
 }
 
 .theme-range-value {
   font-size: 11px;
   color: var(--ink);
   font-weight: 600;
+  flex: 0 0 auto;
+  min-width: 30px;
+  text-align: right;
 }
 
 .theme-range {
   width: 100%;
+  flex: 1 1 auto;
   appearance: none;
   -webkit-appearance: none;
   height: 4px;
@@ -640,6 +658,39 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
   background: var(--theme-accent-strong);
   box-shadow: 0 2px 6px color-mix(in srgb, var(--workspace-accent) 20%, transparent);
   cursor: pointer;
+}
+
+.theme-mode-options {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.theme-mode-option {
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 74%, var(--ink) 26%);
+  min-height: auto;
+  padding: 2px 0;
+  font-family: 'Public Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.theme-mode-option:hover {
+  color: var(--ink);
+}
+
+.theme-mode-option.is-active {
+  color: var(--theme-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.24em;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--workspace-accent-border) 68%, transparent);
 }
 
 .theme-options {
@@ -729,6 +780,25 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 .theme-option-check svg {
   width: 8px;
   height: 8px;
+}
+
+body.theme-tone-dark .header-search-shell {
+  background: color-mix(in srgb, var(--card-bg) calc(var(--custom-surface-opacity) + 60%), transparent);
+  border-color: color-mix(in srgb, var(--workspace-accent-border) calc(var(--custom-border-opacity) + 20%), var(--warm-gray) 48%);
+}
+
+body.theme-tone-dark .quick-shortcut-icon-wrap {
+  background: color-mix(in srgb, var(--card-bg) calc(var(--custom-surface-opacity) + 18%), transparent);
+}
+
+body.theme-tone-dark .theme-menu {
+  background: var(--card-bg);
+  border-color: var(--warm-gray);
+}
+
+body.theme-tone-dark .deferred-shell {
+  background: var(--card-bg);
+  border-color: var(--warm-gray);
 }
 
 .theme-menu-actions {
@@ -832,35 +902,37 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 /* ---- Language options ---- */
 .theme-language-options {
   display: flex;
-  gap: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 14px;
 }
 
 .theme-language-option {
-  flex: 1 1 0;
-  border: 1px solid color-mix(in srgb, var(--workspace-accent-border) calc(var(--custom-border-opacity) + 4%), var(--warm-gray) 38%);
-  background: color-mix(in srgb, var(--card-bg) calc(var(--custom-surface-opacity) + 56%), transparent);
-  color: var(--ink);
-  border-radius: 12px;
-  padding: 7px 10px;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 74%, var(--ink) 26%);
+  padding: 2px 0;
   font-family: 'Public Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-  min-height: 36px;
+  transition: color 0.15s ease, opacity 0.15s ease;
+  min-height: auto;
   text-align: center;
 }
 
 .theme-language-option:hover {
-  border-color: var(--theme-accent-muted);
-  background: var(--theme-accent-soft);
-  color: var(--theme-accent-strong);
+  color: var(--ink);
 }
 
 .theme-language-option.is-active {
-  border-color: color-mix(in srgb, var(--accent-amber) 32%, var(--warm-gray) 68%);
-  background: var(--theme-accent-soft);
   color: var(--theme-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.24em;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--workspace-accent-border) 68%, transparent);
 }
 
 /* ---- Tab cleanup banner ---- */
