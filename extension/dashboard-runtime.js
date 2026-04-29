@@ -433,7 +433,13 @@ function scheduleChromeTabGroupsImport() {
       await loadImportedChromeGroupMeta();
       const importedCount = await importChromeNativeGroupsIntoSessionGroups();
       if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+      window.__suppressAutoRefreshUntil = Date.now() + 2000;
       await renderDashboard();
+      if (window.__tabRefreshTimeout) {
+        clearTimeout(window.__tabRefreshTimeout);
+        window.__tabRefreshTimeout = null;
+      }
+      window.__suppressAutoRefreshUntil = 0;
     } finally {
       chromeTabGroupsImportInFlight = false;
     }
@@ -2150,7 +2156,13 @@ document.addEventListener('click', async (e) => {
     if (!restored?.url) return;
 
     await reopenSavedTab(restored.url);
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
     await renderDashboard();
+    if (window.__tabRefreshTimeout) {
+      clearTimeout(window.__tabRefreshTimeout);
+      window.__tabRefreshTimeout = null;
+    }
+    window.__suppressAutoRefreshUntil = 0;
 
     const item = actionEl.closest('.deferred-item');
     if (item) {

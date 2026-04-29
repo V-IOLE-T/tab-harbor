@@ -674,6 +674,13 @@ function initializePopup() {
           try { await popupRefreshInFlight; } catch { /* swallow */ }
         }
         await refreshPopup();
+        // tabs.onActivated (from switching to a new active tab) may have
+        // rescheduled a refresh during our await — suppress it
+        if (popupRefreshTimer) {
+          clearTimeout(popupRefreshTimer);
+          popupRefreshTimer = null;
+        }
+        popupRefreshQueued = false;
       } finally {
         actionEl.classList.remove('is-loading');
       }
