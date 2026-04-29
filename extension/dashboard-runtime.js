@@ -1420,7 +1420,7 @@ function renderGroupNavArea(groups) {
             <div class="theme-language-options" role="group" aria-label="${runtimeT ? runtimeT('languageLabel') : 'Language'}">
               <button class="theme-language-option ${languagePreference === 'auto' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="auto" aria-pressed="${languagePreference === 'auto'}">${runtimeT ? runtimeT('languageAuto') : 'Auto'}</button>
               <button class="theme-language-option ${languagePreference === 'en' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="en" aria-pressed="${languagePreference === 'en'}">${runtimeT ? runtimeT('languageEnglish') : 'English'}</button>
-              <button class="theme-language-option ${languagePreference === 'zh-CN' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="zh-CN" aria-pressed="${languagePreference === 'zh-CN'}">${runtimeT ? runtimeT('languageChinese') : '中文'}</button>
+              <button class="theme-language-option ${languagePreference === 'zh-CN' ? 'is-active' : ''}" type="button" data-action="select-language" data-language="zh-CN" aria-pressed="${languagePreference === 'zh-CN'}">${runtimeT ? runtimeT('languageChinese') : 'Chinese'}</button>
             </div>
           </div>
         </div>

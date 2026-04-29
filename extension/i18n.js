@@ -130,7 +130,7 @@
       languageLabel: 'Language',
       languageAuto: 'Auto',
       languageEnglish: 'English',
-      languageChinese: '中文',
+      languageChinese: 'Chinese',
       chromeTabGroupsLabel: 'Chrome tab groups',
       toastChromeTabGroupsOn: 'Chrome tab groups on',
       toastChromeTabGroupsOff: 'Chrome tab groups off',
