@@ -175,6 +175,13 @@ function getTabLabel(tab) {
   }
 }
 
+function getTabOrderTokens(tab) {
+  const tokens = [];
+  if (tab?.id != null) tokens.push(String(tab.id));
+  if (tab?.url) tokens.push(String(tab.url));
+  return [...new Set(tokens.filter(Boolean))];
+}
+
 const filterTabs = popupTheme.filterRealTabs || (tabs => Array.isArray(tabs) ? tabs : []);
 
 function getLandingPatterns() {
@@ -268,30 +275,25 @@ function reorderGroupTabsByStoredUrls(tabs, groupKey) {
   const orderIds = popupState.groupTabOrder[String(groupKey)] || [];
   if (!Array.isArray(tabs) || !tabs.length || !orderIds.length) return Array.isArray(tabs) ? tabs.slice() : [];
 
-  const wrappedTabs = tabs.map(tab => ({
-    id: String(tab?.url || ''),
-    tab,
-  }));
-  const subsetUrls = new Set(orderIds);
-  const reordered = reorderVisibleItemsByIds(
-    wrappedTabs,
-    orderIds,
-    item => subsetUrls.has(item.id)
-  );
-  return reordered.map(item => item.tab);
+  const orderIndex = new Map(orderIds.map((id, index) => [String(id), index]));
+  return tabs
+    .map((tab, originalIndex) => {
+      const match = getTabOrderTokens(tab)
+        .map(token => orderIndex.get(token))
+        .find(index => Number.isInteger(index));
+      return {
+        tab,
+        originalIndex,
+        order: Number.isInteger(match) ? match : Number.MAX_SAFE_INTEGER,
+      };
+    })
+    .sort((a, b) => a.order - b.order || a.originalIndex - b.originalIndex)
+    .map(entry => entry.tab);
 }
 
 function getOrderedUniqueTabsForGroup(group) {
   const tabs = Array.isArray(group?.tabs) ? group.tabs : [];
-  const seen = new Set();
-  const uniqueTabs = [];
-  for (const tab of tabs) {
-    const url = String(tab?.url || '');
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    uniqueTabs.push(tab);
-  }
-  return reorderGroupTabsByStoredUrls(uniqueTabs, group?.domain);
+  return reorderGroupTabsByStoredUrls(tabs, group?.domain);
 }
 
 async function loadPopupState() {

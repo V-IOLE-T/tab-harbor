@@ -51,6 +51,34 @@
     return `${fallbackName} ${suffix}`;
   }
 
+  function findReusableSessionGroupId(groups, assignments, nativeGroup) {
+    const nativeTabIds = Array.isArray(nativeGroup?.tabIds)
+      ? nativeGroup.tabIds.map(tabId => String(tabId)).filter(Boolean).sort()
+      : [];
+    if (!nativeTabIds.length) return '';
+
+    const nativeTitle = String(nativeGroup?.title || '').trim().toLowerCase();
+
+    for (const group of groups || []) {
+      const groupId = String(group?.id || '');
+      if (!groupId) continue;
+
+      const assignedTabIds = Object.entries(assignments || {})
+        .filter(([, assignedGroupId]) => String(assignedGroupId) === groupId)
+        .map(([tabId]) => String(tabId))
+        .sort();
+      if (!assignedTabIds.length || assignedTabIds.length !== nativeTabIds.length) continue;
+      if (!assignedTabIds.every((tabId, index) => tabId === nativeTabIds[index])) continue;
+
+      const groupName = String(group?.name || '').trim().toLowerCase();
+      if (!nativeTitle || !groupName || nativeTitle === groupName) {
+        return groupId;
+      }
+    }
+
+    return '';
+  }
+
   function reconcileChromeTabGroupImports({
     currentState,
     importedMeta,
@@ -100,6 +128,10 @@
 
       let sessionGroupId = existingMeta?.sessionGroupId || '';
       let groupIndex = groups.findIndex(group => group.id === sessionGroupId);
+      if (groupIndex === -1) {
+        sessionGroupId = findReusableSessionGroupId(groups, normalizedState.assignments, nativeGroup);
+        groupIndex = groups.findIndex(group => group.id === sessionGroupId);
+      }
 
       if (groupIndex === -1) {
         const uniqueName = buildUniqueGroupName(title, groups);

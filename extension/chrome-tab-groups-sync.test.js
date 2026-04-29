@@ -258,6 +258,59 @@ test('syncChromeTabGroups reorders tabs inside a chrome group to match desired o
   ]);
 });
 
+test('syncChromeTabGroups reorders grouped tabs across groups to match desired group order in a window', async () => {
+  resetChromeGroupState();
+  const moveCalls = [];
+
+  globalThis.chrome.tabs.group = async (opts) => opts.groupId ?? 0;
+  globalThis.chrome.tabs.move = async (tabId, opts) => {
+    moveCalls.push({ tabId, ...opts });
+  };
+  globalThis.chrome.tabGroups.update = async () => {};
+  globalThis.chrome.tabGroups.query = async () => [
+    { id: 501, title: 'GitHub', color: 'grey', windowId: 1 },
+    { id: 502, title: 'Bilibili', color: 'red', windowId: 1 },
+  ];
+  globalThis.chrome.tabs.query = async (opts) => {
+    if (opts?.groupId === 501) {
+      return [
+        { id: 11, groupId: 501, windowId: 1, index: 8 },
+      ];
+    }
+    if (opts?.groupId === 502) {
+      return [
+        { id: 22, groupId: 502, windowId: 1, index: 5 },
+      ];
+    }
+    if (opts?.windowId === 1) {
+      return [
+        { id: 22, windowId: 1, index: 5 },
+        { id: 11, windowId: 1, index: 8 },
+      ];
+    }
+    return [];
+  };
+
+  await saveChromeTabGroupsSetting(true);
+  await populateChromeGroupMap([
+    { virtualGroupKey: 'github.com', windowId: 1, chromeGroupId: 501 },
+    { virtualGroupKey: 'bilibili.com', windowId: 1, chromeGroupId: 502 },
+  ]);
+
+  await syncChromeTabGroups([
+    { domain: 'github.com', tabs: [{ id: 11, windowId: 1, url: 'https://github.com' }] },
+    { domain: 'bilibili.com', tabs: [{ id: 22, windowId: 1, url: 'https://bilibili.com' }] },
+  ]);
+
+  assert.deepEqual(
+    moveCalls.slice(-2),
+    [
+      { tabId: 11, windowId: 1, index: 5 },
+      { tabId: 22, windowId: 1, index: 6 },
+    ]
+  );
+});
+
 test('syncChromeTabGroups cleans up when disabled after being enabled', async () => {
   resetChromeGroupState();
   let ungroupCalls = [];

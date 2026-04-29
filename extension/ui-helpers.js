@@ -132,10 +132,11 @@ function showToast(message, { action } = {}) {
   const toast = document.getElementById('toast');
   const toastText = document.getElementById('toastText');
   const toastAction = document.getElementById('toastAction');
+  if (!toast || !toastText) return;
 
   toastText.textContent = message;
 
-  if (action) {
+  if (action && toastAction) {
     toastAction.textContent = action.label;
     toastAction.hidden = false;
     toastAction.onclick = async () => {
@@ -147,7 +148,7 @@ function showToast(message, { action } = {}) {
         toast.classList.remove('visible');
       }
     };
-  } else {
+  } else if (toastAction) {
     toastAction.hidden = true;
     toastAction.onclick = null;
   }

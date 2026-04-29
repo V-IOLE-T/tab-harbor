@@ -35,13 +35,13 @@ const {
   clearTabSessionGroup,
   normalizeSessionGroups,
   pruneSessionGroups,
+  renameSessionGroup,
 } = globalThis.TabOutSessionGroups || {};
 
 const {
   applyGroupOrder,
   createReorderedKeys,
   normalizeGroupOrderState,
-  setPinEnabled,
 } = globalThis.TabOutGroupOrder || {};
 
 const {
@@ -104,6 +104,34 @@ function fallbackBuildChromeImportName(baseName, groups, excludeGroupId = '') {
   return `${fallbackName} ${suffix}`;
 }
 
+function fallbackFindReusableSessionGroupId(groups, assignments, managedIds, nativeGroup) {
+  const nativeTabIds = Array.isArray(nativeGroup?.tabIds)
+    ? nativeGroup.tabIds.map(tabId => String(tabId)).filter(Boolean).sort()
+    : [];
+  if (!nativeTabIds.length) return '';
+
+  const nativeTitle = String(nativeGroup?.title || '').trim().toLowerCase();
+
+  for (const group of groups || []) {
+    const groupId = String(group?.id || '');
+    if (!groupId || managedIds.has(groupId)) continue;
+
+    const assignedTabIds = Object.entries(assignments || {})
+      .filter(([, assignedGroupId]) => String(assignedGroupId) === groupId)
+      .map(([tabId]) => String(tabId))
+      .sort();
+    if (!assignedTabIds.length || assignedTabIds.length !== nativeTabIds.length) continue;
+    if (!assignedTabIds.every((tabId, index) => tabId === nativeTabIds[index])) continue;
+
+    const groupName = String(group?.name || '').trim().toLowerCase();
+    if (!nativeTitle || !groupName || nativeTitle === groupName) {
+      return groupId;
+    }
+  }
+
+  return '';
+}
+
 function fallbackReconcileChromeTabGroupImports({
   currentState,
   importedMeta,
@@ -149,6 +177,10 @@ function fallbackReconcileChromeTabGroupImports({
 
     let sessionGroupId = existingMeta?.sessionGroupId || '';
     let groupIndex = groups.findIndex(group => group.id === sessionGroupId);
+    if (groupIndex === -1) {
+      sessionGroupId = fallbackFindReusableSessionGroupId(groups, assignments, managedIds, nativeGroup);
+      groupIndex = groups.findIndex(group => group.id === sessionGroupId);
+    }
 
     if (groupIndex === -1) {
       const created = addSessionGroup({ groups, assignments }, fallbackBuildChromeImportName(title, groups));
@@ -229,15 +261,21 @@ const {
 // All open tabs — populated by fetchOpenTabs()
 let openTabs = [];
 let sessionGroupsState = normalizeSessionGroups ? normalizeSessionGroups() : { groups: [], assignments: {} };
+const MANUAL_GROUP_PREFIX = '__session_group__:';
+const PAGE_CHIP_DRAG_DEBUG = false;
 const SESSION_GROUPS_KEY = 'sessionGroups';
 const IMPORTED_CHROME_GROUPS_KEY = 'importedChromeSessionGroups';
 let groupOrderState = normalizeGroupOrderState ? normalizeGroupOrderState() : { sessionOrder: [], pinnedOrder: [], pinEnabled: false };
 const GROUP_ORDER_KEY = 'groupOrder';
 let groupTabOrderState = {};
 const GROUP_TAB_ORDER_KEY = 'groupTabOrder';
+let groupLabelOverrides = {};
+const GROUP_LABEL_OVERRIDES_KEY = 'groupLabelOverrides';
+let groupRenameEditorState = null;
 let draggedGroupId = '';
 let dragStartPoint = null;
 let suppressJumpUntil = 0;
+let suppressPageChipClickUntil = 0;
 let draggedGroupButtonEl = null;
 let dragPlaceholderEl = null;
 let draggedDrawerItemId = '';
@@ -248,6 +286,7 @@ let draggedPageChipId = '';
 let draggedPageChipEl = null;
 let pageChipDragState = null;
 let pageChipPlaceholderEl = null;
+let pageChipNewGroupSlotEl = null;
 let chromeTabGroupsEnabled = false;
 let importedChromeGroupMeta = normalizeChromeImportedGroupMeta
   ? normalizeChromeImportedGroupMeta(runtimeEmptyChromeImportedMeta)
@@ -255,6 +294,9 @@ let importedChromeGroupMeta = normalizeChromeImportedGroupMeta
 let chromeTabGroupsImportTimer = null;
 let chromeTabGroupsUnsubscribe = null;
 let chromeTabGroupsImportInFlight = false;
+let suppressChromeTabGroupsImportUntil = 0;
+const ENTRY_ANIMATIONS_CLASS = 'entry-animations-enabled';
+let entryAnimationsTimer = null;
 const CHROME_TAB_GROUPS_DEBUG_KEY = 'chromeTabGroupsDebug';
 
 function reorderVisibleItemsByIds(items, orderIds, includeItem) {
@@ -296,6 +338,27 @@ function normalizeGroupTabOrderState(input) {
   );
 }
 
+function normalizeGroupLabelOverrides(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+
+  return Object.fromEntries(
+    Object.entries(input)
+      .map(([groupKey, label]) => [String(groupKey), String(label || '').trim()])
+      .filter(([, label]) => Boolean(label))
+  );
+}
+
+function getTabOrderTokens(tab) {
+  const tokens = [];
+  if (tab?.id != null) tokens.push(String(tab.id));
+  if (tab?.url) tokens.push(String(tab.url));
+  return [...new Set(tokens.filter(Boolean))];
+}
+
+function getPrimaryTabOrderToken(tab) {
+  return getTabOrderTokens(tab)[0] || '';
+}
+
 function pruneGroupTabOrderState(state, groups = []) {
   const normalized = normalizeGroupTabOrderState(state);
   const groupMap = new Map(
@@ -303,7 +366,7 @@ function pruneGroupTabOrderState(state, groups = []) {
       String(group.domain),
       new Set(
         (group.tabs || [])
-          .map(tab => String(tab?.url || ''))
+          .flatMap(tab => getTabOrderTokens(tab))
           .filter(Boolean)
       ),
     ])
@@ -312,9 +375,9 @@ function pruneGroupTabOrderState(state, groups = []) {
   return Object.fromEntries(
     Object.entries(normalized)
       .map(([groupKey, orderIds]) => {
-        const validUrls = groupMap.get(String(groupKey));
-        if (!validUrls) return null;
-        const filtered = orderIds.filter(url => validUrls.has(url));
+        const validTokens = groupMap.get(String(groupKey));
+        if (!validTokens) return null;
+        const filtered = orderIds.filter(token => validTokens.has(token));
         return filtered.length > 0 ? [String(groupKey), filtered] : null;
       })
       .filter(Boolean)
@@ -336,49 +399,59 @@ async function saveGroupTabOrder(nextState) {
   return groupTabOrderState;
 }
 
+async function loadGroupLabelOverrides() {
+  const stored = await chrome.storage.local.get(GROUP_LABEL_OVERRIDES_KEY);
+  groupLabelOverrides = normalizeGroupLabelOverrides(stored[GROUP_LABEL_OVERRIDES_KEY]);
+  return groupLabelOverrides;
+}
+
+async function saveGroupLabelOverrides(nextState) {
+  groupLabelOverrides = normalizeGroupLabelOverrides(nextState);
+  await chrome.storage.local.set({ [GROUP_LABEL_OVERRIDES_KEY]: groupLabelOverrides });
+  return groupLabelOverrides;
+}
+
 function reorderGroupTabsByStoredUrls(tabs, groupKey) {
   const orderIds = groupTabOrderState[String(groupKey)] || [];
   if (!Array.isArray(tabs) || !tabs.length || !orderIds.length) return Array.isArray(tabs) ? tabs.slice() : [];
 
-  const wrappedTabs = tabs.map(tab => ({
-    id: String(tab?.url || ''),
-    tab,
-  }));
-  const subsetUrls = new Set(orderIds);
-  const reordered = reorderVisibleItemsByIds(
-    wrappedTabs,
-    orderIds,
-    item => subsetUrls.has(item.id)
-  );
-  return reordered.map(item => item.tab);
+  const orderIndex = new Map(orderIds.map((id, index) => [String(id), index]));
+  return tabs
+    .map((tab, originalIndex) => {
+      const match = getTabOrderTokens(tab)
+        .map(token => orderIndex.get(token))
+        .find(index => Number.isInteger(index));
+      return {
+        tab,
+        originalIndex,
+        order: Number.isInteger(match) ? match : Number.MAX_SAFE_INTEGER,
+      };
+    })
+    .sort((a, b) => a.order - b.order || a.originalIndex - b.originalIndex)
+    .map(entry => entry.tab);
 }
 
 function getOrderedUniqueTabsForGroup(group) {
   const tabs = Array.isArray(group?.tabs) ? group.tabs : [];
-  const seen = new Set();
-  const uniqueTabs = [];
-  for (const tab of tabs) {
-    const url = String(tab?.url || '');
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    uniqueTabs.push(tab);
-  }
-  return reorderGroupTabsByStoredUrls(uniqueTabs, group?.domain);
+  return reorderGroupTabsByStoredUrls(tabs, group?.domain);
 }
 
 function getTabsOrderedForChromeSync(group) {
   const tabs = Array.isArray(group?.tabs) ? group.tabs : [];
-  const orderUrls = groupTabOrderState[String(group?.domain)] || [];
-  if (!orderUrls.length) return tabs.slice();
+  const orderIds = groupTabOrderState[String(group?.domain)] || [];
+  if (!orderIds.length) return tabs.slice();
 
-  const orderIndex = new Map(orderUrls.map((url, index) => [String(url), index]));
+  const orderIndex = new Map(orderIds.map((id, index) => [String(id), index]));
   return tabs
     .map((tab, originalIndex) => ({
       tab,
       originalIndex,
-      order: orderIndex.has(String(tab?.url || ''))
-        ? orderIndex.get(String(tab?.url || ''))
-        : Number.MAX_SAFE_INTEGER,
+      order: (() => {
+        const match = getTabOrderTokens(tab)
+          .map(token => orderIndex.get(token))
+          .find(index => Number.isInteger(index));
+        return Number.isInteger(match) ? match : Number.MAX_SAFE_INTEGER;
+      })(),
     }))
     .sort((a, b) => a.order - b.order || a.originalIndex - b.originalIndex)
     .map(entry => entry.tab);
@@ -389,6 +462,275 @@ function getChromeSyncGroups(groups = domainGroups) {
     ...group,
     tabs: getTabsOrderedForChromeSync(group),
   }));
+}
+
+function isManualGroupKey(groupKey = '') {
+  return String(groupKey || '').startsWith(MANUAL_GROUP_PREFIX);
+}
+
+function getManualGroupIdFromGroupKey(groupKey = '') {
+  return isManualGroupKey(groupKey) ? String(groupKey).slice(MANUAL_GROUP_PREFIX.length) : '';
+}
+
+function getDomainGroupByKey(groupKey = '') {
+  return domainGroups.find(group => String(group?.domain) === String(groupKey)) || null;
+}
+
+function getGroupDisplayLabel(group) {
+  if (!group) return 'Group';
+  if (group.domain === '__landing-pages__') {
+    return groupLabelOverrides[group.domain] || (runtimeT ? runtimeT('homepagesLabel') : 'Homepages');
+  }
+  return String(groupLabelOverrides[group.domain] || group.label || friendlyDomain(group.domain) || 'Group').trim() || 'Group';
+}
+
+function createUniqueSessionGroupName(baseName, groups = sessionGroupsState.groups, excludeGroupId = '') {
+  return fallbackBuildChromeImportName(baseName, groups, excludeGroupId);
+}
+
+function openGroupRenameEditor(groupKey, manualGroupId = '') {
+  const group = getDomainGroupByKey(groupKey);
+  if (!group) return;
+  groupRenameEditorState = {
+    groupKey: String(groupKey || ''),
+    manualGroupId: String(manualGroupId || ''),
+    value: getGroupDisplayLabel(group),
+    shouldFocus: true,
+  };
+  void renderDashboard();
+}
+
+function closeGroupRenameEditor() {
+  groupRenameEditorState = null;
+}
+
+async function submitGroupRenameEditor() {
+  if (!groupRenameEditorState) return;
+
+  const { groupKey, manualGroupId } = groupRenameEditorState;
+  const group = getDomainGroupByKey(groupKey);
+  if (!group) {
+    closeGroupRenameEditor();
+    return;
+  }
+
+  const currentLabel = getGroupDisplayLabel(group);
+  const cleanName = String(groupRenameEditorState.value || '').trim();
+  if (!cleanName || cleanName === currentLabel) {
+    closeGroupRenameEditor();
+    await renderDashboard();
+    return;
+  }
+
+  try {
+    if (manualGroupId) {
+      const nextState = renameSessionGroup(sessionGroupsState, manualGroupId, cleanName);
+      await saveSessionGroups(nextState);
+    } else {
+      await saveGroupLabelOverrides({
+        ...groupLabelOverrides,
+        [groupKey]: cleanName,
+      });
+    }
+    closeGroupRenameEditor();
+    await renderDashboard();
+    showToast(runtimeT ? runtimeT('toastRenamedGroup', { name: cleanName }) : `Renamed to ${cleanName}`);
+  } catch (err) {
+    showToast(err.message || (runtimeT ? runtimeT('toastCouldNotCreateGroup') : 'Could not create group'));
+  }
+}
+
+function deriveDraggedTabGroupName(tab) {
+  const rawTitle = cleanTitle(
+    smartTitle(stripTitleNoise(tab?.title || ''), tab?.url || ''),
+    tab?.url || ''
+  );
+  const title = String(rawTitle || '').trim();
+  if (title) return title;
+
+  try {
+    const parsed = new URL(String(tab?.url || ''));
+    return friendlyDomain(parsed.hostname || parsed.host || parsed.href || 'Group');
+  } catch {
+    return 'Group';
+  }
+}
+
+function getTabIdsForGroupChip(groupKey, chipSortId) {
+  const group = getDomainGroupByKey(groupKey);
+  if (!group) return [];
+
+  return (group.tabs || [])
+    .filter(tab => getTabOrderTokens(tab).includes(String(chipSortId || '')))
+    .map(tab => Number(tab?.id))
+    .filter(Number.isFinite);
+}
+
+function getOrderedIdsForGroup(groupKey) {
+  const group = getDomainGroupByKey(groupKey);
+  return getOrderedUniqueTabsForGroup(group).map(tab => getPrimaryTabOrderToken(tab)).filter(Boolean);
+}
+
+function buildOrderedIdsFromList(listEl, draggedId) {
+  if (!listEl) return [];
+
+  return [...listEl.children]
+    .map(node => {
+      if (node === pageChipPlaceholderEl) return String(draggedId || '');
+      return node.dataset?.chipSortId || '';
+    })
+    .filter(Boolean);
+}
+
+function logPageChipDragDebug(stage, details = {}) {
+  if (!PAGE_CHIP_DRAG_DEBUG) return;
+
+  const payload = Object.entries(details)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(' ');
+  void (payload ? `${stage} ${payload}` : stage);
+}
+
+function clearPageChipDropPreview() {
+  document.querySelectorAll('.mission-card.is-drop-target').forEach(card => {
+    card.classList.remove('is-drop-target');
+  });
+  document.body.classList.remove('page-chip-drop-new-group');
+  pageChipNewGroupSlotEl?.remove();
+  pageChipNewGroupSlotEl = null;
+}
+
+function setPageChipDropPreview(cardEl, {
+  createNewGroup = false,
+  newGroupPlacement = 'after',
+  insertBeforeCardEl = null,
+} = {}) {
+  clearPageChipDropPreview();
+  if (cardEl) cardEl.classList.add('is-drop-target');
+  if (createNewGroup) {
+    document.body.classList.add('page-chip-drop-new-group');
+    const missionsEl = document.getElementById('openTabsMissions');
+    if (missionsEl) {
+      pageChipNewGroupSlotEl = document.createElement('div');
+      pageChipNewGroupSlotEl.className = 'mission-drop-new-group-slot';
+      pageChipNewGroupSlotEl.innerHTML = '<span class="mission-drop-new-group-line"></span>';
+      const firstCard = missionsEl.querySelector('.mission-card');
+      if (insertBeforeCardEl) {
+        missionsEl.insertBefore(pageChipNewGroupSlotEl, insertBeforeCardEl);
+      } else if (newGroupPlacement === 'before' && firstCard) {
+        missionsEl.insertBefore(pageChipNewGroupSlotEl, firstCard);
+      } else {
+        missionsEl.appendChild(pageChipNewGroupSlotEl);
+      }
+    }
+  }
+}
+
+function getPageChipDropTarget(clientX, clientY) {
+  const missionsEl = document.getElementById('openTabsMissions');
+  const missionCards = missionsEl ? [...missionsEl.querySelectorAll('.mission-card')] : [];
+  if (!missionsEl || !missionCards.length) return null;
+
+  const firstCardRect = missionCards[0].getBoundingClientRect();
+  const lastCardRect = missionCards[missionCards.length - 1].getBoundingClientRect();
+  const edgeThreshold = 18;
+  const gapThreshold = 24;
+
+  if (clientY <= firstCardRect.top + edgeThreshold) {
+    return { kind: 'new-group', placement: 'before', reason: 'top-edge' };
+  }
+
+  if (clientY >= lastCardRect.bottom - edgeThreshold) {
+    return { kind: 'new-group', placement: 'after', reason: 'bottom-edge' };
+  }
+
+  for (let index = 0; index < missionCards.length - 1; index += 1) {
+    const currentRect = missionCards[index].getBoundingClientRect();
+    const nextCardEl = missionCards[index + 1];
+    const nextRect = nextCardEl.getBoundingClientRect();
+    const gapTop = currentRect.bottom - gapThreshold;
+    const gapBottom = nextRect.top + gapThreshold;
+    if (clientY >= gapTop && clientY <= gapBottom) {
+      return {
+        kind: 'new-group',
+        placement: 'before',
+        insertBeforeCardEl: nextCardEl,
+        reason: 'card-gap',
+      };
+    }
+  }
+
+  for (const cardEl of missionCards) {
+    const rect = cardEl.getBoundingClientRect();
+    const withinCardY = clientY >= rect.top && clientY <= rect.bottom;
+    if (!withinCardY) continue;
+
+    const listEl = cardEl.querySelector('.mission-pages');
+    const groupKey = cardEl.dataset?.groupId || '';
+    const listRect = listEl?.getBoundingClientRect?.();
+    const sourceGroupKey = pageChipDragState?.sourceGroupKey || '';
+    const isSourceGroup = groupKey === sourceGroupKey;
+    const cardEdgeThreshold = 16;
+
+    if (listEl && groupKey && listRect && isSourceGroup) {
+      if (clientY <= listRect.top - cardEdgeThreshold) {
+        return { kind: 'new-group', placement: 'before', insertBeforeCardEl: cardEl, reason: 'source-card-top-gap' };
+      }
+      if (clientY >= listRect.bottom + cardEdgeThreshold) {
+        return { kind: 'new-group', placement: 'after', reason: 'source-card-bottom-gap' };
+      }
+    }
+
+    if (listEl && groupKey) {
+      return { kind: 'group', cardEl, listEl, groupKey };
+    }
+  }
+
+  return null;
+}
+
+function reassignTabsToSessionGroup(state, tabIds, groupId) {
+  let nextState = state;
+  for (const tabId of tabIds) {
+    nextState = assignTabToSessionGroup(nextState, tabId, groupId);
+  }
+  return nextState;
+}
+
+function clearTabsFromSessionGroups(state, tabIds) {
+  let nextState = state;
+  for (const tabId of tabIds) {
+    nextState = clearTabSessionGroup(nextState, tabId);
+  }
+  return nextState;
+}
+
+function ensureManualDropGroup(state, targetGroupKey) {
+  const targetManualGroupId = getManualGroupIdFromGroupKey(targetGroupKey);
+  if (targetManualGroupId) {
+    return {
+      nextState: state,
+      groupId: targetManualGroupId,
+      groupName: state.groups.find(group => group.id === targetManualGroupId)?.name || '',
+    };
+  }
+
+  const targetGroup = getDomainGroupByKey(targetGroupKey);
+  if (!targetGroup) throw new Error('Group not found');
+
+  const baseName = getGroupDisplayLabel(targetGroup);
+  const nextName = createUniqueSessionGroupName(baseName, state.groups);
+  const created = addSessionGroup(state, nextName);
+  const targetTabIds = (targetGroup.tabs || [])
+    .map(tab => Number(tab?.id))
+    .filter(Number.isFinite);
+
+  return {
+    nextState: reassignTabsToSessionGroup(created.state, targetTabIds, created.group.id),
+    groupId: created.group.id,
+    groupName: created.group.name,
+  };
 }
 
 /**
@@ -483,6 +825,57 @@ async function saveChromeTabGroupsDebug(snapshot) {
   });
 }
 
+function suppressChromeTabGroupsImport(durationMs = 1200) {
+  suppressChromeTabGroupsImportUntil = Math.max(
+    suppressChromeTabGroupsImportUntil,
+    Date.now() + Math.max(0, Number(durationMs) || 0)
+  );
+  if (chromeTabGroupsImportTimer) {
+    clearTimeout(chromeTabGroupsImportTimer);
+    chromeTabGroupsImportTimer = null;
+  }
+}
+
+function isChromeTabGroupsImportSuppressed() {
+  return Date.now() < suppressChromeTabGroupsImportUntil;
+}
+
+function disableEntryAnimations() {
+  if (entryAnimationsTimer) {
+    clearTimeout(entryAnimationsTimer);
+    entryAnimationsTimer = null;
+  }
+  document.body.classList.remove(ENTRY_ANIMATIONS_CLASS);
+}
+
+function primeEntryAnimations(durationMs = 1200) {
+  if (!document.body) return;
+  document.body.classList.add(ENTRY_ANIMATIONS_CLASS);
+  if (entryAnimationsTimer) clearTimeout(entryAnimationsTimer);
+  entryAnimationsTimer = setTimeout(() => {
+    document.body.classList.remove(ENTRY_ANIMATIONS_CLASS);
+    entryAnimationsTimer = null;
+  }, Math.max(0, Number(durationMs) || 0));
+}
+
+async function syncChromeTabGroupsWithoutImportEcho() {
+  if (typeof syncChromeTabGroups !== 'function') return;
+  suppressChromeTabGroupsImport();
+  await syncChromeTabGroups(getChromeSyncGroups(domainGroups));
+}
+
+function disableChromeTabGroupsImportModeForLocalEdits() {
+  if (!chromeTabGroupsEnabled) return;
+  if (typeof setImportMode === 'function') setImportMode(false);
+}
+
+function shouldImportChromeGroupsIntoSessionState() {
+  if (!chromeTabGroupsEnabled) return false;
+  const groupCount = Array.isArray(sessionGroupsState?.groups) ? sessionGroupsState.groups.length : 0;
+  const assignmentCount = sessionGroupsState?.assignments ? Object.keys(sessionGroupsState.assignments).length : 0;
+  return groupCount === 0 && assignmentCount === 0;
+}
+
 function ensureChromeTabGroupsSubscription() {
   if (!chromeTabGroupsEnabled || typeof subscribeToChromeTabGroupChanges !== 'function') {
     if (chromeTabGroupsImportTimer) {
@@ -498,6 +891,7 @@ function ensureChromeTabGroupsSubscription() {
 
   if (chromeTabGroupsUnsubscribe) return;
   chromeTabGroupsUnsubscribe = subscribeToChromeTabGroupChanges(() => {
+    if (isChromeTabGroupsImportSuppressed()) return;
     scheduleChromeTabGroupsImport();
   });
 }
@@ -571,8 +965,13 @@ function scheduleChromeTabGroupsImport() {
       const realTabs = getRealTabs();
       await loadSessionGroups(realTabs.map(tab => tab.id));
       await loadImportedChromeGroupMeta();
+      if (!shouldImportChromeGroupsIntoSessionState()) {
+        disableChromeTabGroupsImportModeForLocalEdits();
+        return;
+      }
       const importedCount = await importChromeNativeGroupsIntoSessionGroups();
       if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+      disableChromeTabGroupsImportModeForLocalEdits();
       await renderDashboard();
     } finally {
       chromeTabGroupsImportInFlight = false;
@@ -591,9 +990,9 @@ async function applyChromeTabGroupsToggle(nextEnabled) {
   await loadImportedChromeGroupMeta();
 
   let importedCount = 0;
-  if (enable) {
+  if (enable && shouldImportChromeGroupsIntoSessionState()) {
     importedCount = await importChromeNativeGroupsIntoSessionGroups();
-  } else if (typeof reconcileChromeTabGroupImports === 'function') {
+  } else if (!enable && typeof reconcileChromeTabGroupImports === 'function') {
     const cleared = reconcileChromeTabGroupImports({
       currentState: sessionGroupsState,
       importedMeta: importedChromeGroupMeta,
@@ -605,6 +1004,7 @@ async function applyChromeTabGroupsToggle(nextEnabled) {
 
   ensureChromeTabGroupsSubscription();
   if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+  disableChromeTabGroupsImportModeForLocalEdits();
   await renderDashboard();
   showToast(enable
     ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on')
@@ -683,7 +1083,8 @@ function syncGroupOrderState(orderKeys) {
   groupOrderState = normalizeGroupOrderState({
     ...groupOrderState,
     sessionOrder: orderKeys,
-    pinnedOrder: groupOrderState.pinEnabled ? orderKeys : groupOrderState.pinnedOrder,
+    pinnedOrder: orderKeys,
+    pinEnabled: false,
   });
   return groupOrderState;
 }
@@ -722,6 +1123,113 @@ function animateNavButtons(navListEl, previousRects) {
   });
 }
 
+function animateMissionCards(missionsEl, previousRects) {
+  missionsEl?.querySelectorAll('.mission-card').forEach(card => {
+    const key = card.dataset.groupId || '';
+    const previousRect = previousRects.get(key);
+    if (!previousRect) return;
+
+    const nextRect = card.getBoundingClientRect();
+    const deltaX = previousRect.left - nextRect.left;
+    const deltaY = previousRect.top - nextRect.top;
+    if (!deltaX && !deltaY) return;
+
+    const travel = Math.hypot(deltaX, deltaY);
+    const duration = prefersReducedMotion()
+      ? 0
+      : Math.min(220, Math.max(140, Math.round(150 + travel * 0.18)));
+
+    card.style.transition = 'none';
+    card.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+    requestAnimationFrame(() => {
+      card.style.transition = duration
+        ? `transform ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`
+        : 'none';
+      card.style.transform = '';
+    });
+  });
+}
+
+function buildPreviewGroupOrderFromDom(insertedGroupKey = '') {
+  const missionsEl = document.getElementById('openTabsMissions');
+  if (!missionsEl) return [];
+
+  return [...missionsEl.children]
+    .map(node => {
+      if (node === pageChipNewGroupSlotEl) return insertedGroupKey;
+      if (node.classList?.contains('mission-card')) return node.dataset?.groupId || '';
+      return '';
+    })
+    .filter(Boolean);
+}
+
+function buildPersistentGroupOrderWithInsertedGroup(insertedGroupKey, {
+  insertBeforeGroupKey = '',
+  placement = 'after',
+} = {}) {
+  const normalizedInsertedKey = String(insertedGroupKey || '');
+  if (!normalizedInsertedKey) return [];
+
+  const currentKeys = domainGroups
+    .map(group => String(group?.domain || ''))
+    .filter(Boolean)
+    .filter(key => key !== normalizedInsertedKey);
+
+  const normalizedBeforeKey = String(insertBeforeGroupKey || '');
+  if (normalizedBeforeKey) {
+    const insertIndex = currentKeys.indexOf(normalizedBeforeKey);
+    if (insertIndex >= 0) {
+      currentKeys.splice(insertIndex, 0, normalizedInsertedKey);
+      return currentKeys;
+    }
+  }
+
+  if (placement === 'before') {
+    currentKeys.unshift(normalizedInsertedKey);
+    return currentKeys;
+  }
+
+  currentKeys.push(normalizedInsertedKey);
+  return currentKeys;
+}
+
+function buildPersistentGroupOrderReplacingKey(replacementGroupKey, replacedGroupKey) {
+  const normalizedReplacementKey = String(replacementGroupKey || '');
+  const normalizedReplacedKey = String(replacedGroupKey || '');
+  if (!normalizedReplacementKey) return [];
+
+  const currentKeys = domainGroups
+    .map(group => String(group?.domain || ''))
+    .filter(Boolean)
+    .filter(key => key !== normalizedReplacementKey);
+
+  if (!normalizedReplacedKey) {
+    currentKeys.push(normalizedReplacementKey);
+    return currentKeys;
+  }
+
+  const replaceIndex = currentKeys.indexOf(normalizedReplacedKey);
+  if (replaceIndex >= 0) {
+    currentKeys.splice(replaceIndex, 1, normalizedReplacementKey);
+    return currentKeys;
+  }
+
+  currentKeys.push(normalizedReplacementKey);
+  return currentKeys;
+}
+
+async function persistGroupOrder(orderKeys = []) {
+  const normalizedKeys = [...new Set((orderKeys || []).map(key => String(key)).filter(Boolean))];
+  if (!normalizedKeys.length) return groupOrderState;
+
+  return saveGroupOrder({
+    ...groupOrderState,
+    sessionOrder: normalizedKeys,
+    pinnedOrder: normalizedKeys,
+    pinEnabled: false,
+  });
+}
+
 function applyLiveGroupOrder(orderKeys, options = {}) {
   const keyOrder = orderKeys.map(String);
   const groupMap = new Map(domainGroups.map(group => [String(group.domain), group]));
@@ -731,10 +1239,17 @@ function applyLiveGroupOrder(orderKeys, options = {}) {
   const missionsEl = document.getElementById('openTabsMissions');
   const navListEl = document.querySelector('#openTabsGroupNav .group-nav-list');
   if (options.reorderCards !== false) {
+    const previousMissionRects = new Map();
+    missionsEl?.querySelectorAll('.mission-card').forEach(card => {
+      previousMissionRects.set(card.dataset.groupId || '', card.getBoundingClientRect());
+    });
+
     keyOrder.forEach(key => {
       const card = missionsEl?.querySelector(`.mission-card[data-group-id="${CSS.escape(String(key))}"]`);
       if (card) missionsEl.appendChild(card);
     });
+
+    animateMissionCards(missionsEl, previousMissionRects);
   }
 
   if (options.reorderNav === false || !navListEl) return;
@@ -815,45 +1330,171 @@ function clearDrawerItemDragState() {
   draggedDrawerItemEl = null;
 }
 
-function ensurePageChipPlaceholder() {
-  if (pageChipPlaceholderEl || !draggedPageChipEl) return pageChipPlaceholderEl;
+function ensurePageChipPlaceholder(listEl = pageChipDragState?.dropListEl || pageChipDragState?.sourceListEl) {
+  if (!draggedPageChipEl) return null;
 
-  pageChipPlaceholderEl = document.createElement('div');
-  pageChipPlaceholderEl.className = 'chip-reorder-placeholder';
-  pageChipPlaceholderEl.style.height = `${draggedPageChipEl.getBoundingClientRect().height}px`;
-  draggedPageChipEl.insertAdjacentElement('afterend', pageChipPlaceholderEl);
+  if (!pageChipPlaceholderEl) {
+    pageChipPlaceholderEl = document.createElement('div');
+    pageChipPlaceholderEl.className = 'chip-reorder-placeholder';
+    pageChipPlaceholderEl.style.height = `${draggedPageChipEl.getBoundingClientRect().height}px`;
+  }
+
+  if (listEl && pageChipPlaceholderEl.parentElement !== listEl) {
+    listEl.appendChild(pageChipPlaceholderEl);
+  }
+
   return pageChipPlaceholderEl;
 }
 
-function clearPageChipDragState() {
+function clampPageChipClientPoint(clientX, clientY) {
+  const maxX = Math.max(0, window.innerWidth - 1);
+  const maxY = Math.max(0, window.innerHeight - 1);
+  return {
+    clientX: Math.min(Math.max(Number(clientX) || 0, 0), maxX),
+    clientY: Math.min(Math.max(Number(clientY) || 0, 0), maxY),
+  };
+}
+
+function clearPageChipDragState({ removeNode = false } = {}) {
+  const handleEl = pageChipDragState?.handleEl || null;
+  const pointerId = pageChipDragState?.pointerId;
   draggedPageChipId = '';
-  pageChipDragState = null;
+  clearPageChipDropPreview();
   pageChipPlaceholderEl?.remove();
   pageChipPlaceholderEl = null;
   document.body.classList.remove('page-chip-list-dragging');
+  document.body.classList.remove('page-chip-drag-armed');
 
   if (draggedPageChipEl) {
+    if (removeNode) draggedPageChipEl.remove();
     draggedPageChipEl.classList.remove('is-dragging');
     draggedPageChipEl.style.removeProperty('--drag-left');
     draggedPageChipEl.style.removeProperty('--drag-top');
     draggedPageChipEl.style.removeProperty('--drag-width');
   }
 
+  if (handleEl && pointerId != null && typeof handleEl.releasePointerCapture === 'function') {
+    try {
+      if (handleEl.hasPointerCapture?.(pointerId)) handleEl.releasePointerCapture(pointerId);
+    } catch {}
+  }
+
+  pageChipDragState = null;
   draggedPageChipEl = null;
 }
 
 function updateDraggedPageChipPosition(clientX, clientY) {
   if (!draggedPageChipEl || !pageChipDragState) return;
+  const clampedPoint = clampPageChipClientPoint(clientX, clientY);
 
-  draggedPageChipEl.style.setProperty('--drag-left', `${clientX - pageChipDragState.offsetX}px`);
-  draggedPageChipEl.style.setProperty('--drag-top', `${clientY - pageChipDragState.offsetY}px`);
+  draggedPageChipEl.style.setProperty('--drag-left', `${clampedPoint.clientX - pageChipDragState.offsetX}px`);
+  draggedPageChipEl.style.setProperty('--drag-top', `${clampedPoint.clientY - pageChipDragState.offsetY}px`);
 }
 
-function previewPageChipOrder(clientY) {
-  const listEl = pageChipDragState?.listEl;
-  if (!listEl || !draggedPageChipId) return;
+function startPageChipDragVisuals() {
+  if (!draggedPageChipEl || !pageChipDragState || pageChipDragState.moved) return;
+  disableEntryAnimations();
+  pageChipDragState.moved = true;
+  document.body.classList.add('page-chip-list-dragging');
+  draggedPageChipEl.classList.add('is-dragging');
+  draggedPageChipEl.style.setProperty('--drag-width', `${draggedPageChipEl.getBoundingClientRect().width}px`);
+  ensurePageChipPlaceholder();
+  logPageChipDragDebug('drag-start', {
+    groupKey: pageChipDragState.sourceGroupKey,
+    chip: draggedPageChipId,
+  });
+}
 
-  const placeholder = ensurePageChipPlaceholder();
+function syncPageChipDropTarget(clientX, clientY) {
+  const clampedPoint = clampPageChipClientPoint(clientX, clientY);
+  const dropTarget = getPageChipDropTarget(clampedPoint.clientX, clampedPoint.clientY);
+  if (!pageChipDragState || !draggedPageChipId) return;
+
+  if (!dropTarget) {
+    const previous = pageChipDragState.debugTargetSignature || '';
+    pageChipDragState.dropGroupKey = '';
+    pageChipDragState.dropListEl = null;
+    pageChipDragState.dropCardEl = null;
+    pageChipDragState.createNewGroup = false;
+    pageChipDragState.newGroupPlacement = '';
+    pageChipDragState.insertBeforeCardEl = null;
+    pageChipDragState.lastResolvedDropTarget = null;
+    pageChipPlaceholderEl?.remove();
+    clearPageChipDropPreview();
+    pageChipDragState.debugTargetSignature = 'none';
+    if (previous !== 'none') {
+      logPageChipDragDebug('target', { kind: 'none', x: Math.round(clampedPoint.clientX), y: Math.round(clampedPoint.clientY) });
+    }
+    return;
+  }
+
+  if (dropTarget.kind === 'new-group') {
+    pageChipDragState.dropGroupKey = '';
+    pageChipDragState.dropListEl = null;
+    pageChipDragState.dropCardEl = null;
+    pageChipDragState.createNewGroup = true;
+    pageChipDragState.newGroupPlacement = dropTarget.placement || 'after';
+    pageChipDragState.insertBeforeCardEl = dropTarget.insertBeforeCardEl || null;
+    pageChipDragState.lastResolvedDropTarget = {
+      kind: 'new-group',
+      placement: pageChipDragState.newGroupPlacement,
+      insertBeforeCardEl: pageChipDragState.insertBeforeCardEl,
+      reason: dropTarget.reason || '',
+    };
+    pageChipPlaceholderEl?.remove();
+    setPageChipDropPreview(null, {
+      createNewGroup: true,
+      newGroupPlacement: pageChipDragState.newGroupPlacement,
+      insertBeforeCardEl: pageChipDragState.insertBeforeCardEl,
+    });
+    const signature = `new:${pageChipDragState.newGroupPlacement}:${dropTarget.reason || ''}`;
+    if (pageChipDragState.debugTargetSignature !== signature) {
+      pageChipDragState.debugTargetSignature = signature;
+      logPageChipDragDebug('target', {
+        kind: 'new-group',
+        placement: pageChipDragState.newGroupPlacement,
+        reason: dropTarget.reason || '',
+        x: Math.round(clampedPoint.clientX),
+        y: Math.round(clampedPoint.clientY),
+      });
+    }
+    return;
+  }
+
+  const { cardEl, listEl, groupKey } = dropTarget;
+  pageChipDragState.dropGroupKey = groupKey;
+  pageChipDragState.dropListEl = listEl;
+  pageChipDragState.dropCardEl = cardEl;
+  pageChipDragState.createNewGroup = false;
+  pageChipDragState.newGroupPlacement = '';
+  pageChipDragState.insertBeforeCardEl = null;
+  pageChipDragState.lastResolvedDropTarget = {
+    kind: 'group',
+    groupKey,
+    cardEl,
+    listEl,
+  };
+  setPageChipDropPreview(cardEl);
+  const signature = `group:${groupKey}`;
+  if (pageChipDragState.debugTargetSignature !== signature) {
+    pageChipDragState.debugTargetSignature = signature;
+      logPageChipDragDebug('target', {
+        kind: 'group',
+        groupKey,
+        x: Math.round(clampedPoint.clientX),
+        y: Math.round(clampedPoint.clientY),
+      });
+    }
+
+  return dropTarget;
+}
+
+function previewPageChipOrder(clientX, clientY) {
+  const dropTarget = syncPageChipDropTarget(clientX, clientY);
+  if (!dropTarget || dropTarget.kind !== 'group') return;
+  const { listEl } = dropTarget;
+
+  const placeholder = ensurePageChipPlaceholder(listEl);
   const previousRects = new Map();
   const items = [...listEl.querySelectorAll('[data-chip-sort-id]:not(.is-dragging)')];
 
@@ -879,13 +1520,192 @@ function previewPageChipOrder(clientY) {
   animatePageChipItems(listEl, previousRects);
 }
 
-async function saveGroupTabRowOrder(groupKey, orderUrls) {
-  if (!groupKey || !Array.isArray(orderUrls) || !orderUrls.length) return;
+async function saveGroupTabRowOrder(groupKey, orderIds) {
+  if (!groupKey || !Array.isArray(orderIds) || !orderIds.length) return;
 
   await saveGroupTabOrder({
     ...groupTabOrderState,
-    [String(groupKey)]: orderUrls.map(url => String(url)).filter(Boolean),
+    [String(groupKey)]: orderIds.map(id => String(id)).filter(Boolean),
   });
+}
+
+function createSessionGroupFromDraggedTab(state, tab) {
+  const nextName = createUniqueSessionGroupName(deriveDraggedTabGroupName(tab), state.groups);
+  return addSessionGroup(state, nextName);
+}
+
+async function saveCrossGroupTabRowOrder(sourceGroupKey, targetGroupKey, targetListEl, draggedId) {
+  const nextState = {
+    ...groupTabOrderState,
+    [String(sourceGroupKey)]: getOrderedIdsForGroup(sourceGroupKey).filter(id => id !== String(draggedId || '')),
+    [String(targetGroupKey)]: targetListEl
+      ? buildOrderedIdsFromList(targetListEl, draggedId)
+      : [String(draggedId || '')].filter(Boolean),
+  };
+
+  await saveGroupTabOrder(nextState);
+}
+
+async function moveDraggedPageChipToGroup(targetGroupKey) {
+  const sourceGroupKey = pageChipDragState?.sourceGroupKey || '';
+  const draggedChipId = draggedPageChipId;
+  const draggedTabIds = getTabIdsForGroupChip(sourceGroupKey, draggedChipId);
+  if (!sourceGroupKey || !draggedChipId || !draggedTabIds.length) return null;
+  const targetWasManualGroup = isManualGroupKey(targetGroupKey);
+
+  logPageChipDragDebug('move-group-begin', {
+    sourceGroupKey,
+    targetGroupKey,
+    draggedChipId,
+    tabIds: draggedTabIds.join(','),
+  });
+  let nextState = clearTabsFromSessionGroups(sessionGroupsState, draggedTabIds);
+  const targetGroup = ensureManualDropGroup(nextState, targetGroupKey);
+  nextState = reassignTabsToSessionGroup(targetGroup.nextState, draggedTabIds, targetGroup.groupId);
+  nextState = pruneSessionGroups(nextState, openTabs.map(tab => tab.id));
+  logPageChipDragDebug('move-group-save-session', {
+    groupId: targetGroup.groupId,
+    groupName: targetGroup.groupName,
+  });
+  await saveSessionGroups(nextState);
+  logPageChipDragDebug('move-group-end', {
+    groupId: targetGroup.groupId,
+    groupName: targetGroup.groupName,
+  });
+
+  return {
+    groupKey: `${MANUAL_GROUP_PREFIX}${targetGroup.groupId}`,
+    groupName: targetGroup.groupName,
+    targetWasManualGroup,
+  };
+}
+
+async function createSessionGroupFromDraggedPageChip() {
+  const sourceGroupKey = pageChipDragState?.sourceGroupKey || '';
+  const draggedChipId = draggedPageChipId;
+  const draggedTabs = getDomainGroupByKey(sourceGroupKey)?.tabs?.filter(tab =>
+    getTabOrderTokens(tab).includes(String(draggedChipId || ''))
+  ) || [];
+  const draggedTabIds = draggedTabs.map(tab => Number(tab?.id)).filter(Number.isFinite);
+  if (!sourceGroupKey || !draggedChipId || !draggedTabs.length || !draggedTabIds.length) return null;
+
+  logPageChipDragDebug('create-group-begin', {
+    sourceGroupKey,
+    draggedChipId,
+    tabIds: draggedTabIds.join(','),
+  });
+  let nextState = clearTabsFromSessionGroups(sessionGroupsState, draggedTabIds);
+  const created = createSessionGroupFromDraggedTab(nextState, draggedTabs[0]);
+  nextState = reassignTabsToSessionGroup(created.state, draggedTabIds, created.group.id);
+  nextState = pruneSessionGroups(nextState, openTabs.map(tab => tab.id));
+  logPageChipDragDebug('create-group-save-session', {
+    groupId: created.group.id,
+    groupName: created.group.name,
+  });
+  await saveSessionGroups(nextState);
+  logPageChipDragDebug('create-group-save-order', {
+    groupId: created.group.id,
+    groupName: created.group.name,
+  });
+  await saveCrossGroupTabRowOrder(sourceGroupKey, `${MANUAL_GROUP_PREFIX}${created.group.id}`, null, draggedChipId);
+  logPageChipDragDebug('create-group-end', {
+    groupId: created.group.id,
+    groupName: created.group.name,
+  });
+
+  return created.group;
+}
+
+async function finishPageChipDrag() {
+  if (!draggedPageChipId || !pageChipDragState) return false;
+
+  const moved = pageChipDragState.moved;
+  const sourceGroupKey = pageChipDragState.sourceGroupKey;
+  const targetGroupKey = pageChipDragState.dropGroupKey || '';
+  const targetListEl = pageChipDragState.dropListEl;
+  const createNewGroup = pageChipDragState.createNewGroup;
+  logPageChipDragDebug('finish-begin', {
+    moved,
+    sourceGroupKey,
+    targetGroupKey,
+    createNewGroup,
+    placement: pageChipDragState.newGroupPlacement || '',
+  });
+
+  try {
+    const changedGroupKeys = new Set();
+    let requiresOpenTabsRebuild = true;
+    if (moved) {
+      if (targetGroupKey && targetGroupKey === sourceGroupKey && targetListEl) {
+        const orderIds = buildOrderedIdsFromList(targetListEl, draggedPageChipId);
+        logPageChipDragDebug('finish-reorder-save', { orderCount: orderIds.length });
+        await saveGroupTabRowOrder(sourceGroupKey, orderIds);
+        if (draggedPageChipEl && pageChipPlaceholderEl) {
+          targetListEl.insertBefore(draggedPageChipEl, pageChipPlaceholderEl);
+        }
+        requiresOpenTabsRebuild = false;
+      } else if (targetGroupKey) {
+        const movedGroup = await moveDraggedPageChipToGroup(targetGroupKey);
+        if (movedGroup) {
+          disableChromeTabGroupsImportModeForLocalEdits();
+          changedGroupKeys.add(sourceGroupKey);
+          changedGroupKeys.add(movedGroup.groupKey);
+          if (!movedGroup.targetWasManualGroup) {
+            const nextGroupOrder = buildPersistentGroupOrderReplacingKey(movedGroup.groupKey, targetGroupKey);
+            await persistGroupOrder(nextGroupOrder);
+          }
+          logPageChipDragDebug('finish-save-cross-order', { groupKey: movedGroup.groupKey });
+          await saveCrossGroupTabRowOrder(sourceGroupKey, movedGroup.groupKey, targetListEl, draggedPageChipId);
+          showToast(runtimeT ? runtimeT('toastMovedTo', { name: movedGroup.groupName }) : `Moved to ${movedGroup.groupName}`);
+          logPageChipDragDebug('finish-group-move', { groupKey: movedGroup.groupKey, groupName: movedGroup.groupName });
+        }
+      } else if (createNewGroup) {
+        const createdGroup = await createSessionGroupFromDraggedPageChip();
+        if (createdGroup) {
+          disableChromeTabGroupsImportModeForLocalEdits();
+          changedGroupKeys.add(sourceGroupKey);
+          const createdGroupKey = `${MANUAL_GROUP_PREFIX}${createdGroup.id}`;
+          changedGroupKeys.add(createdGroupKey);
+          const nextGroupOrder = buildPersistentGroupOrderWithInsertedGroup(createdGroupKey, {
+            insertBeforeGroupKey: pageChipDragState.insertBeforeCardEl?.dataset?.groupId || '',
+            placement: pageChipDragState.newGroupPlacement || 'after',
+          });
+          await persistGroupOrder(nextGroupOrder);
+          logPageChipDragDebug('create-group-save-group-order', {
+            orderCount: nextGroupOrder.length,
+          });
+          showToast(runtimeT ? runtimeT('toastCreatedGroup', { name: createdGroup.name }) : `Created ${createdGroup.name}`);
+          logPageChipDragDebug('finish-new-group', { groupName: createdGroup.name });
+        }
+      }
+
+      clearPageChipDragState({ removeNode: requiresOpenTabsRebuild });
+      suppressPageChipClickUntil = Date.now() + 250;
+      if (!requiresOpenTabsRebuild) {
+        logPageChipDragDebug('finish-local-reorder-commit', { groupKey: sourceGroupKey });
+        await syncChromeTabGroupsWithoutImportEcho();
+      } else {
+        logPageChipDragDebug('finish-open-tabs-patch-begin', { moved, changedGroups: [...changedGroupKeys].join(',') });
+        await renderOpenTabsLayout({
+          rebuildGroups: true,
+          syncChrome: true,
+          patchDom: true,
+          changedGroupKeys: [...changedGroupKeys],
+        });
+        logPageChipDragDebug('finish-open-tabs-patch-end', { moved });
+      }
+    } else {
+      clearPageChipDragState({ removeNode: moved });
+    }
+
+    logPageChipDragDebug('finish-end', { moved });
+    return true;
+  } catch (error) {
+    logPageChipDragDebug('finish-error', {
+      message: error?.message || String(error),
+    });
+    throw error;
+  }
 }
 
 function updateDraggedDrawerItemPosition(clientX, clientY) {
@@ -1021,53 +1841,6 @@ async function removeTabAssignments(tabIds = []) {
 
   nextState = pruneSessionGroups(nextState, openTabs.map(tab => tab.id));
   return saveSessionGroups(nextState);
-}
-
-function buildMoveMenu(tab) {
-  const currentGroupId = tab.manualGroupId || '';
-  const otherGroups = sessionGroupsState.groups.filter(group => group.id !== currentGroupId);
-  const groupButtons = otherGroups.map(group => `
-    <button
-      class="move-menu-btn"
-      type="button"
-      data-action="move-tab-to-group"
-      data-tab-id="${tab.id}"
-      data-group-id="${group.id}"
-    >
-      ${runtimeEscapeHtml ? runtimeEscapeHtml(group.name) : group.name}
-    </button>`).join('');
-
-  return `
-    <div class="chip-move-wrap">
-      <button
-        class="chip-action chip-move-trigger"
-        type="button"
-        data-action="toggle-move-menu"
-        data-tab-id="${tab.id}"
-        aria-label="${runtimeT ? runtimeT('moveToGroup') : 'Move to group'}"
-        aria-expanded="false"
-        title="${runtimeT ? runtimeT('moveToGroup') : 'Move to group'}"
-      >
-        ${ICONS.move}
-      </button>
-      <div class="chip-move-menu" hidden>
-        ${groupButtons || `<div class="move-menu-empty">${runtimeT ? runtimeT('noGroupsYet') : 'No groups yet'}</div>`}
-        <button class="move-menu-btn move-menu-btn-primary" type="button" data-action="move-tab-to-new-group" data-tab-id="${tab.id}">
-          ${runtimeT ? runtimeT('newGroupButton') : '+ New group'}
-        </button>
-        ${currentGroupId ? `<button class="move-menu-btn" type="button" data-action="move-tab-to-original" data-tab-id="${tab.id}">${runtimeT ? runtimeT('backToOriginalGroup') : 'Back to original group'}</button>` : ''}
-      </div>
-    </div>`;
-}
-
-function closeMoveMenus() {
-  document.querySelectorAll('.chip-move-menu').forEach(menu => {
-    menu.hidden = true;
-  });
-  document.querySelectorAll('.chip-move-trigger.is-open').forEach(trigger => {
-    trigger.classList.remove('is-open');
-    trigger.setAttribute('aria-expanded', 'false');
-  });
 }
 
 /**
@@ -1335,7 +2108,6 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
       <span class="chip-favicon chip-favicon-fallback"${faviconUrl ? ' style="display:none"' : ''}>${fallbackLabel}</span>
       <span class="chip-text">${safeLabel}</span>${dupeTag}
       <div class="chip-actions">
-        ${buildMoveMenu(tab)}
         <button class="chip-action chip-save" type="button" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" aria-label="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}" title="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
@@ -1367,8 +2139,11 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
 function renderDomainCard(group) {
   const tabs      = group.tabs || [];
   const tabCount  = tabs.length;
-  const isLanding = group.domain === '__landing-pages__';
   const stableId  = getStableGroupId(group.domain);
+  const groupTitle = getGroupDisplayLabel(group);
+  const renameEditorOpen = groupRenameEditorState?.groupKey === String(group.domain);
+  const renameEditorValue = renameEditorOpen ? (groupRenameEditorState?.value || groupTitle) : groupTitle;
+  const safeRenameValue = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(renameEditorValue) : String(renameEditorValue).replace(/"/g, '&quot;');
 
   // Count duplicates (exact URL match)
   const urlCounts = {};
@@ -1377,18 +2152,8 @@ function renderDomainCard(group) {
   const hasDupes   = dupeUrls.length > 0;
   const totalExtras = dupeUrls.reduce((s, [, c]) => s + c - 1, 0);
 
-  const tabBadge = `<span class="open-tabs-badge">
-    ${ICONS.tabs}
-    ${runtimeT
-      ? runtimeT('tabsOpenBadge', {
-          count: tabCount,
-          tabsWord: tabCount === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'),
-        })
-      : `${tabCount} tab${tabCount !== 1 ? 's' : ''} open`}
-  </span>`;
-
   const dupeBadge = hasDupes
-    ? `<span class="open-tabs-badge is-duplicate">
+    ? `<span class="duplicate-count-badge">
         ${runtimeT
           ? runtimeT('duplicatesCount', {
               count: totalExtras,
@@ -1397,13 +2162,6 @@ function renderDomainCard(group) {
           : `${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`}
       </span>`
     : '';
-
-  // Deduplicate for display: show each URL once, with (Nx) badge if duped
-  const seen = new Set();
-  const uniqueTabs = [];
-  for (const tab of tabs) {
-    if (!seen.has(tab.url)) { seen.add(tab.url); uniqueTabs.push(tab); }
-  }
 
   const orderedTabs = getOrderedUniqueTabsForGroup(group);
   const visibleTabs = orderedTabs.slice(0, 8);
@@ -1422,14 +2180,15 @@ function renderDomainCard(group) {
     const safeUrl   = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(tab.url || '') : (tab.url || '').replace(/"/g, '&quot;');
     const safeTitle = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(label) : label.replace(/"/g, '&quot;');
     const safeLabel = runtimeEscapeHtml ? runtimeEscapeHtml(label) : label;
-    const safeSortId = (runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(tab.url) : tab.url.replace(/"/g, '&quot;'));
+    const sortId = getPrimaryTabOrderToken(tab);
+    const safeSortId = (runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(sortId) : String(sortId).replace(/"/g, '&quot;'));
     const safeGroupId = (runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(group.domain) : String(group.domain).replace(/"/g, '&quot;'));
     const iconData = runtimeGetIconSources(tab, 16);
     const faviconUrl = iconData.sources[0] || '';
     const fallbackUrl = iconData.sources[1] || '';
     const fallbackLabel = runtimeGetFallbackLabel(label, iconData.hostname);
     const safeFallbackUrl = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(fallbackUrl) : fallbackUrl.replace(/"/g, '&quot;');
-    return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" data-chip-sort-id="${safeSortId}" data-chip-group-id="${safeGroupId}" aria-label="${safeTitle}">
+    return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-id="${tab.id}" data-tab-url="${safeUrl}" data-chip-sort-id="${safeSortId}" data-chip-group-id="${safeGroupId}" aria-label="${safeTitle}">
       <button class="drawer-reorder-handle chip-reorder-handle" type="button" data-chip-drag-handle="tab" aria-label="${runtimeT ? runtimeT('dragReorderTab') : 'Drag to reorder tab'}">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01" /></svg>
       </button>
@@ -1437,7 +2196,6 @@ function renderDomainCard(group) {
       <span class="chip-favicon chip-favicon-fallback"${faviconUrl ? ' style="display:none"' : ''}>${fallbackLabel}</span>
       <span class="chip-text">${safeLabel}</span>${dupeTag}
       <div class="chip-actions">
-        ${buildMoveMenu(tab)}
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
@@ -1471,8 +2229,17 @@ function renderDomainCard(group) {
       <div class="mission-content">
         <div class="mission-top">
           <div class="mission-heading">
-            <span class="mission-name">${isLanding ? (runtimeT ? runtimeT('homepagesLabel') : 'Homepages') : (runtimeEscapeHtml ? runtimeEscapeHtml(group.label || friendlyDomain(group.domain)) : (group.label || friendlyDomain(group.domain)))}</span>
-            ${tabBadge}
+            <span class="mission-title-wrap">
+              ${renameEditorOpen ? `
+                <form class="mission-rename-form" data-action="submit-group-rename" data-group-key="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(group.domain) : String(group.domain).replace(/"/g, '&quot;')}"${group.manualGroupId ? ` data-manual-group-id="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(group.manualGroupId) : String(group.manualGroupId).replace(/"/g, '&quot;')}"` : ''}>
+                  <input class="mission-rename-input" type="text" value="${safeRenameValue}" data-group-rename-input="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(group.domain) : String(group.domain).replace(/"/g, '&quot;')}" aria-label="${runtimeT ? runtimeT('renameGroup') : 'Rename group'}" autocomplete="off">
+                </form>
+              ` : `
+                <button class="mission-rename-trigger" type="button" data-action="rename-session-group" data-group-key="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(group.domain) : String(group.domain).replace(/"/g, '&quot;')}"${group.manualGroupId ? ` data-manual-group-id="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(group.manualGroupId) : String(group.manualGroupId).replace(/"/g, '&quot;')}"` : ''} aria-label="${runtimeT ? runtimeT('renameGroup') : 'Rename group'}" title="${runtimeT ? runtimeT('renameGroup') : 'Rename group'}">
+                  <span class="mission-name">${runtimeEscapeHtml ? runtimeEscapeHtml(groupTitle) : groupTitle}</span>
+                </button>
+              `}
+            </span>
             ${dupeBadge}
           </div>
           ${closeAllButton}
@@ -1489,8 +2256,7 @@ function renderDomainCard(group) {
 
 function renderGroupNav(group) {
   const stableId = getStableGroupId(group.domain);
-  const isLanding = group.domain === '__landing-pages__';
-  const label = isLanding ? (runtimeT ? runtimeT('homepagesLabel') : 'Homepages') : (group.label || friendlyDomain(group.domain));
+  const label = getGroupDisplayLabel(group);
   const orderedGroup = {
     ...group,
     tabs: getOrderedUniqueTabsForGroup(group),
@@ -1516,9 +2282,6 @@ function renderGroupNav(group) {
 }
 
 function renderGroupNavArea(groups) {
-  const pinTooltip = groupOrderState.pinEnabled
-    ? (runtimeT ? runtimeT('pinnedOrder') : 'Pinned order')
-    : (runtimeT ? runtimeT('pinOrder') : 'Pin order');
   const languagePreference = runtimeGetLanguagePreference ? runtimeGetLanguagePreference() : 'auto';
   return `
     <div class="group-nav-list">
@@ -1532,9 +2295,6 @@ function renderGroupNavArea(groups) {
           <circle cx="16.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
           <circle cx="10.5" cy="16.5" r="1.5" fill="currentColor" stroke="none" />
         </svg>
-      </button>
-      <button class="group-pin-toggle ${groupOrderState.pinEnabled ? 'is-active' : ''}" id="headerPinToggle" type="button" data-action="toggle-pin-order" data-tooltip="${pinTooltip}" aria-label="${pinTooltip}" aria-pressed="${groupOrderState.pinEnabled}">
-        ${ICONS.pin}
       </button>
       <div class="theme-menu" id="themeMenuPanel" hidden role="dialog" aria-label="${runtimeT ? runtimeT('deskSettingsPanel') : 'Desk settings panel'}">
         <div class="theme-menu-section">
@@ -1598,6 +2358,320 @@ function renderGroupNavArea(groups) {
     </div>`;
 }
 
+function buildElementFromHtml(html) {
+  const template = document.createElement('template');
+  template.innerHTML = html.trim();
+  return template.content.firstElementChild || null;
+}
+
+function renderOpenTabsSummary(realTabs = getRealTabs()) {
+  const openTabsSection      = document.getElementById('openTabsSection');
+  const openTabsSectionCount = document.getElementById('openTabsSectionCount');
+  const openTabsSectionTitle = document.getElementById('openTabsSectionTitle');
+  const openTabsGroupNav     = document.getElementById('openTabsGroupNav');
+  const openTabsMissionsEl   = document.getElementById('openTabsMissions');
+
+  if (!openTabsSection) return;
+
+  if (domainGroups.length > 0) {
+    if (openTabsSectionTitle) openTabsSectionTitle.textContent = runtimeT ? runtimeT('openTabsSectionTitle') : 'Open tabs';
+    const tabsWord = runtimeT
+      ? (realTabs.length === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'))
+      : `tab${realTabs.length !== 1 ? 's' : ''}`;
+    const groupsWord = runtimeT
+      ? (domainGroups.length === 1 ? runtimeT('groupsWordSingular') : runtimeT('groupsWordPlural'))
+      : `group${domainGroups.length !== 1 ? 's' : ''}`;
+    const summary = runtimeT
+      ? runtimeT('sectionSummary', { tabs: realTabs.length, groups: domainGroups.length, tabsWord, groupsWord })
+      : `${realTabs.length} ${tabsWord} across ${domainGroups.length} ${groupsWord}`;
+    if (openTabsSectionCount) {
+      openTabsSectionCount.innerHTML = `<span class="section-summary">${summary}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} ${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}</button>`;
+    }
+    if (openTabsGroupNav) openTabsGroupNav.style.display = 'flex';
+    openTabsSection.style.display = 'block';
+    return;
+  }
+
+  if (openTabsGroupNav) {
+    openTabsGroupNav.innerHTML = '';
+    openTabsGroupNav.style.display = 'none';
+  }
+  openTabsSection.style.display = 'block';
+  if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderMissionsEmptyState();
+  if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
+}
+
+function patchOpenTabsDomFromGroups(realTabs = getRealTabs(), changedGroupKeys = []) {
+  const missionsEl = document.getElementById('openTabsMissions');
+  const navHost = document.getElementById('openTabsGroupNav');
+  const navListEl = navHost?.querySelector('.group-nav-list');
+  if (!missionsEl || !navHost || !navListEl) {
+    renderOpenTabsArea(realTabs);
+    return;
+  }
+
+  const changedKeys = new Set((changedGroupKeys || []).map(String).filter(Boolean));
+
+  const existingCards = new Map(
+    [...missionsEl.querySelectorAll('.mission-card')].map(card => [card.dataset.groupId || '', card])
+  );
+  const existingButtons = new Map(
+    [...navListEl.querySelectorAll('.group-nav-button')].map(button => [button.dataset.groupId || '', button])
+  );
+  const desiredKeys = domainGroups.map(group => String(group.domain));
+
+  existingCards.forEach((card, key) => {
+    if (!desiredKeys.includes(key)) card.remove();
+  });
+  existingButtons.forEach((button, key) => {
+    if (!desiredKeys.includes(key)) button.remove();
+  });
+
+  const previousNavRects = new Map();
+  navListEl.querySelectorAll('.group-nav-button').forEach(button => {
+    previousNavRects.set(button.dataset.groupId || '', button.getBoundingClientRect());
+  });
+
+  for (const group of domainGroups) {
+    const key = String(group.domain);
+    const currentCard = existingCards.get(key) || null;
+    let nextCardNode = currentCard;
+    if (!currentCard || changedKeys.has(key)) {
+      nextCardNode = buildElementFromHtml(renderDomainCard(group));
+      if (currentCard && nextCardNode) {
+        currentCard.replaceWith(nextCardNode);
+      }
+    }
+    if (nextCardNode) missionsEl.appendChild(nextCardNode);
+
+    const currentButton = existingButtons.get(key) || null;
+    let nextButtonNode = currentButton;
+    if (!currentButton || changedKeys.has(key)) {
+      nextButtonNode = buildElementFromHtml(renderGroupNav(group));
+      if (currentButton && nextButtonNode) {
+        currentButton.replaceWith(nextButtonNode);
+      }
+    }
+    if (nextButtonNode) navListEl.appendChild(nextButtonNode);
+  }
+
+  animateNavButtons(navListEl, previousNavRects);
+  renderOpenTabsSummary(realTabs);
+}
+
+async function buildDomainGroups(realTabs = getRealTabs()) {
+  // Landing pages (Gmail inbox, Twitter home, etc.) get their own special group
+  // so they can be closed together without affecting content tabs on the same domain.
+  const LANDING_PAGE_PATTERNS = [
+    { hostname: 'mail.google.com', test: (p, h) =>
+        !h.includes('#inbox/') && !h.includes('#sent/') && !h.includes('#search/') },
+    { hostname: 'x.com',               pathExact: ['/home'] },
+    { hostname: 'www.linkedin.com',    pathExact: ['/'] },
+    { hostname: 'github.com',          pathExact: ['/'] },
+    { hostname: 'www.youtube.com',     pathExact: ['/'] },
+    ...(typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' ? LOCAL_LANDING_PAGE_PATTERNS : []),
+  ];
+
+  function isLandingPage(url) {
+    try {
+      const parsed = new URL(url);
+      return LANDING_PAGE_PATTERNS.some(p => {
+        const hostnameMatch = p.hostname
+          ? parsed.hostname === p.hostname
+          : p.hostnameEndsWith
+            ? parsed.hostname.endsWith(p.hostnameEndsWith)
+            : false;
+        if (!hostnameMatch) return false;
+        if (p.test)       return p.test(parsed.pathname, url);
+        if (p.pathPrefix) return parsed.pathname.startsWith(p.pathPrefix);
+        if (p.pathExact)  return p.pathExact.includes(parsed.pathname);
+        return parsed.pathname === '/';
+      });
+    } catch { return false; }
+  }
+
+  domainGroups = [];
+  const manualGroupMap = Object.fromEntries(
+    sessionGroupsState.groups.map(group => [
+      group.id,
+      {
+        domain: `${MANUAL_GROUP_PREFIX}${group.id}`,
+        label: group.name,
+        tabs: [],
+        isManual: true,
+        manualGroupId: group.id,
+        createdAt: group.createdAt,
+      },
+    ])
+  );
+  const groupMap    = {};
+  const landingTabs = [];
+  const customGroups = typeof LOCAL_CUSTOM_GROUPS !== 'undefined' ? LOCAL_CUSTOM_GROUPS : [];
+
+  function matchCustomGroup(url) {
+    try {
+      const parsed = new URL(url);
+      return customGroups.find(r => {
+        const hostMatch = r.hostname
+          ? parsed.hostname === r.hostname
+          : r.hostnameEndsWith
+            ? parsed.hostname.endsWith(r.hostnameEndsWith)
+            : false;
+        if (!hostMatch) return false;
+        if (r.pathPrefix) return parsed.pathname.startsWith(r.pathPrefix);
+        return true;
+      }) || null;
+    } catch { return null; }
+  }
+
+  for (const tab of realTabs) {
+    try {
+      const assignedGroupId = sessionGroupsState.assignments[String(tab.id)];
+      if (assignedGroupId && manualGroupMap[assignedGroupId]) {
+        manualGroupMap[assignedGroupId].tabs.push({
+          ...tab,
+          manualGroupId: assignedGroupId,
+        });
+        continue;
+      }
+
+      if (isLandingPage(tab.url)) {
+        landingTabs.push(tab);
+        continue;
+      }
+
+      const customRule = matchCustomGroup(tab.url);
+      if (customRule) {
+        const key = customRule.groupKey;
+        if (!groupMap[key]) groupMap[key] = { domain: key, label: customRule.groupLabel, tabs: [] };
+        groupMap[key].tabs.push(tab);
+        continue;
+      }
+
+      let hostname;
+      if (tab.url && tab.url.startsWith('file://')) {
+        hostname = 'local-files';
+      } else {
+        hostname = new URL(tab.url).hostname;
+      }
+      if (!hostname) continue;
+
+      if (!groupMap[hostname]) groupMap[hostname] = { domain: hostname, tabs: [] };
+      groupMap[hostname].tabs.push(tab);
+    } catch {
+      // Skip malformed URLs
+    }
+  }
+
+  if (landingTabs.length > 0) {
+    groupMap.__landing_pages__ = undefined;
+    groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
+  }
+
+  const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
+  const landingSuffixes = LANDING_PAGE_PATTERNS.map(p => p.hostnameEndsWith).filter(Boolean);
+  function isLandingDomain(domain) {
+    if (landingHostnames.has(domain)) return true;
+    return landingSuffixes.some(s => domain.endsWith(s));
+  }
+
+  const manualGroups = Object.values(manualGroupMap)
+    .filter(group => group.tabs.length > 0)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+  const automaticGroups = Object.values(groupMap).sort((a, b) => {
+    const aIsLanding = a.domain === '__landing-pages__';
+    const bIsLanding = b.domain === '__landing-pages__';
+    if (aIsLanding !== bIsLanding) return aIsLanding ? -1 : 1;
+
+    const aIsPriority = isLandingDomain(a.domain);
+    const bIsPriority = isLandingDomain(b.domain);
+    if (aIsPriority !== bIsPriority) return aIsPriority ? -1 : 1;
+
+    return b.tabs.length - a.tabs.length;
+  });
+
+  for (const group of automaticGroups) {
+    if (groupLabelOverrides[group.domain]) {
+      group.label = groupLabelOverrides[group.domain];
+    }
+  }
+
+  domainGroups = applyGroupOrder([...manualGroups, ...automaticGroups], groupOrderState);
+  await loadGroupTabOrder(domainGroups);
+  return domainGroups;
+}
+
+function renderOpenTabsArea(realTabs = getRealTabs()) {
+  const openTabsSection      = document.getElementById('openTabsSection');
+  const openTabsMissionsEl   = document.getElementById('openTabsMissions');
+  const openTabsSectionCount = document.getElementById('openTabsSectionCount');
+  const openTabsSectionTitle = document.getElementById('openTabsSectionTitle');
+  const openTabsGroupNav     = document.getElementById('openTabsGroupNav');
+
+  if (domainGroups.length > 0 && openTabsSection) {
+    if (openTabsSectionTitle) openTabsSectionTitle.textContent = runtimeT ? runtimeT('openTabsSectionTitle') : 'Open tabs';
+    const tabsWord = runtimeT
+      ? (realTabs.length === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'))
+      : `tab${realTabs.length !== 1 ? 's' : ''}`;
+    const groupsWord = runtimeT
+      ? (domainGroups.length === 1 ? runtimeT('groupsWordSingular') : runtimeT('groupsWordPlural'))
+      : `group${domainGroups.length !== 1 ? 's' : ''}`;
+    const summary = runtimeT
+      ? runtimeT('sectionSummary', { tabs: realTabs.length, groups: domainGroups.length, tabsWord, groupsWord })
+      : `${realTabs.length} ${tabsWord} across ${domainGroups.length} ${groupsWord}`;
+    if (openTabsSectionCount) {
+      openTabsSectionCount.innerHTML = `<span class="section-summary">${summary}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} ${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}</button>`;
+    }
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
+    if (openTabsGroupNav) {
+      openTabsGroupNav.innerHTML = renderGroupNavArea(domainGroups);
+      openTabsGroupNav.style.display = 'flex';
+    }
+    openTabsSection.style.display = 'block';
+  } else if (openTabsSection) {
+    if (openTabsGroupNav) {
+      openTabsGroupNav.innerHTML = '';
+      openTabsGroupNav.style.display = 'none';
+    }
+    openTabsSection.style.display = 'block';
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderMissionsEmptyState();
+    if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
+  }
+
+  const statTabs = document.getElementById('statTabs');
+  if (statTabs) statTabs.textContent = openTabs.length;
+
+  if (groupRenameEditorState?.shouldFocus) {
+    const focusKey = String(groupRenameEditorState.groupKey || '');
+    requestAnimationFrame(() => {
+      const renameInput = document.querySelector(`[data-group-rename-input="${CSS.escape(focusKey)}"]`);
+      if (!renameInput) return;
+      renameInput.focus();
+      renameInput.select?.();
+      if (groupRenameEditorState && groupRenameEditorState.groupKey === focusKey) {
+        groupRenameEditorState.shouldFocus = false;
+      }
+    });
+  }
+}
+
+async function renderOpenTabsLayout({ rebuildGroups = true, syncChrome = false, patchDom = false, changedGroupKeys = [] } = {}) {
+  const realTabs = getRealTabs();
+  if (rebuildGroups) {
+    await buildDomainGroups(realTabs);
+  }
+  if (patchDom) {
+    patchOpenTabsDomFromGroups(realTabs, changedGroupKeys);
+  } else {
+    renderOpenTabsArea(realTabs);
+  }
+  setupImageErrorHandlers();
+  if (syncChrome) {
+    await syncChromeTabGroupsWithoutImportEcho();
+  }
+}
+
 /* ----------------------------------------------------------------
    MAIN DASHBOARD RENDERER
    ---------------------------------------------------------------- */
@@ -1649,187 +2723,9 @@ async function renderStaticDashboard() {
   const realTabs = getRealTabs();
   await loadSessionGroups(realTabs.map(tab => tab.id));
   await loadGroupOrder();
-
-  // --- Group tabs by domain ---
-  // Landing pages (Gmail inbox, Twitter home, etc.) get their own special group
-  // so they can be closed together without affecting content tabs on the same domain.
-  const LANDING_PAGE_PATTERNS = [
-    { hostname: 'mail.google.com', test: (p, h) =>
-        !h.includes('#inbox/') && !h.includes('#sent/') && !h.includes('#search/') },
-    { hostname: 'x.com',               pathExact: ['/home'] },
-    { hostname: 'www.linkedin.com',    pathExact: ['/'] },
-    { hostname: 'github.com',          pathExact: ['/'] },
-    { hostname: 'www.youtube.com',     pathExact: ['/'] },
-    // Merge personal patterns from config.local.js (if it exists)
-    ...(typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' ? LOCAL_LANDING_PAGE_PATTERNS : []),
-  ];
-
-  function isLandingPage(url) {
-    try {
-      const parsed = new URL(url);
-      return LANDING_PAGE_PATTERNS.some(p => {
-        // Support both exact hostname and suffix matching (for wildcard subdomains)
-        const hostnameMatch = p.hostname
-          ? parsed.hostname === p.hostname
-          : p.hostnameEndsWith
-            ? parsed.hostname.endsWith(p.hostnameEndsWith)
-            : false;
-        if (!hostnameMatch) return false;
-        if (p.test)       return p.test(parsed.pathname, url);
-        if (p.pathPrefix) return parsed.pathname.startsWith(p.pathPrefix);
-        if (p.pathExact)  return p.pathExact.includes(parsed.pathname);
-        return parsed.pathname === '/';
-      });
-    } catch { return false; }
-  }
-
-  domainGroups = [];
-  const manualGroupMap = Object.fromEntries(
-    sessionGroupsState.groups.map(group => [
-      group.id,
-      {
-        domain: `__session_group__:${group.id}`,
-        label: group.name,
-        tabs: [],
-        isManual: true,
-        manualGroupId: group.id,
-        createdAt: group.createdAt,
-      },
-    ])
-  );
-  const groupMap    = {};
-  const landingTabs = [];
-
-  // Custom group rules from config.local.js (if any)
-  const customGroups = typeof LOCAL_CUSTOM_GROUPS !== 'undefined' ? LOCAL_CUSTOM_GROUPS : [];
-
-  // Check if a URL matches a custom group rule; returns the rule or null
-  function matchCustomGroup(url) {
-    try {
-      const parsed = new URL(url);
-      return customGroups.find(r => {
-        const hostMatch = r.hostname
-          ? parsed.hostname === r.hostname
-          : r.hostnameEndsWith
-            ? parsed.hostname.endsWith(r.hostnameEndsWith)
-            : false;
-        if (!hostMatch) return false;
-        if (r.pathPrefix) return parsed.pathname.startsWith(r.pathPrefix);
-        return true; // hostname matched, no path filter
-      }) || null;
-    } catch { return null; }
-  }
-
-  for (const tab of realTabs) {
-    try {
-      const assignedGroupId = sessionGroupsState.assignments[String(tab.id)];
-      if (assignedGroupId && manualGroupMap[assignedGroupId]) {
-        manualGroupMap[assignedGroupId].tabs.push({
-          ...tab,
-          manualGroupId: assignedGroupId,
-        });
-        continue;
-      }
-
-      if (isLandingPage(tab.url)) {
-        landingTabs.push(tab);
-        continue;
-      }
-
-      // Check custom group rules first (e.g. merge subdomains, split by path)
-      const customRule = matchCustomGroup(tab.url);
-      if (customRule) {
-        const key = customRule.groupKey;
-        if (!groupMap[key]) groupMap[key] = { domain: key, label: customRule.groupLabel, tabs: [] };
-        groupMap[key].tabs.push(tab);
-        continue;
-      }
-
-      let hostname;
-      if (tab.url && tab.url.startsWith('file://')) {
-        hostname = 'local-files';
-      } else {
-        hostname = new URL(tab.url).hostname;
-      }
-      if (!hostname) continue;
-
-      if (!groupMap[hostname]) groupMap[hostname] = { domain: hostname, tabs: [] };
-      groupMap[hostname].tabs.push(tab);
-    } catch {
-      // Skip malformed URLs
-    }
-  }
-
-  if (landingTabs.length > 0) {
-    groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
-  }
-
-  // Sort: landing pages first, then domains from landing page sites, then by tab count
-  // Collect exact hostnames and suffix patterns for priority sorting
-  const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
-  const landingSuffixes = LANDING_PAGE_PATTERNS.map(p => p.hostnameEndsWith).filter(Boolean);
-  function isLandingDomain(domain) {
-    if (landingHostnames.has(domain)) return true;
-    return landingSuffixes.some(s => domain.endsWith(s));
-  }
-  const manualGroups = Object.values(manualGroupMap)
-    .filter(group => group.tabs.length > 0)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-  const automaticGroups = Object.values(groupMap).sort((a, b) => {
-    const aIsLanding = a.domain === '__landing-pages__';
-    const bIsLanding = b.domain === '__landing-pages__';
-    if (aIsLanding !== bIsLanding) return aIsLanding ? -1 : 1;
-
-    const aIsPriority = isLandingDomain(a.domain);
-    const bIsPriority = isLandingDomain(b.domain);
-    if (aIsPriority !== bIsPriority) return aIsPriority ? -1 : 1;
-
-    return b.tabs.length - a.tabs.length;
-  });
-  domainGroups = applyGroupOrder([...manualGroups, ...automaticGroups], groupOrderState);
-  await loadGroupTabOrder(domainGroups);
-
-  // --- Render domain cards ---
-  const openTabsSection      = document.getElementById('openTabsSection');
-  const openTabsMissionsEl   = document.getElementById('openTabsMissions');
-  const openTabsSectionCount = document.getElementById('openTabsSectionCount');
-  const openTabsSectionTitle = document.getElementById('openTabsSectionTitle');
-  const openTabsGroupNav     = document.getElementById('openTabsGroupNav');
-
-  if (domainGroups.length > 0 && openTabsSection) {
-    if (openTabsSectionTitle) openTabsSectionTitle.textContent = runtimeT ? runtimeT('openTabsSectionTitle') : 'Open tabs';
-    const tabsWord = runtimeT
-      ? (realTabs.length === 1 ? runtimeT('tabsWordSingular') : runtimeT('tabsWordPlural'))
-      : `tab${realTabs.length !== 1 ? 's' : ''}`;
-    const groupsWord = runtimeT
-      ? (domainGroups.length === 1 ? runtimeT('groupsWordSingular') : runtimeT('groupsWordPlural'))
-      : `group${domainGroups.length !== 1 ? 's' : ''}`;
-    const summary = runtimeT
-      ? runtimeT('sectionSummary', { tabs: realTabs.length, groups: domainGroups.length, tabsWord, groupsWord })
-      : `${realTabs.length} ${tabsWord} across ${domainGroups.length} ${groupsWord}`;
-    if (openTabsSectionCount) {
-      openTabsSectionCount.innerHTML = `<span class="section-summary">${summary}</span><button class="action-btn close-tabs section-action" type="button" data-action="close-all-open-tabs">${ICONS.close} ${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}</button>`;
-    }
-    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
-    if (openTabsGroupNav) {
-      openTabsGroupNav.innerHTML = renderGroupNavArea(domainGroups);
-      openTabsGroupNav.style.display = 'flex';
-    }
-    openTabsSection.style.display = 'block';
-  } else if (openTabsSection) {
-    if (openTabsGroupNav) {
-      openTabsGroupNav.innerHTML = '';
-      openTabsGroupNav.style.display = 'none';
-    }
-    openTabsSection.style.display = 'block';
-    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderMissionsEmptyState();
-    if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
-  }
-
-  // --- Footer stats ---
-  const statTabs = document.getElementById('statTabs');
-  if (statTabs) statTabs.textContent = openTabs.length;
+  await loadGroupLabelOverrides();
+  await buildDomainGroups(realTabs);
+  renderOpenTabsArea(realTabs);
 
   // --- Check for duplicate Tab Harbor tabs ---
   checkTabOutDupes();
@@ -1843,8 +2739,8 @@ async function renderStaticDashboard() {
 
 async function renderDashboard() {
   await renderStaticDashboard();
-  if (typeof syncChromeTabGroups === 'function') {
-    await syncChromeTabGroups(getChromeSyncGroups(domainGroups));
+  if (chromeTabGroupsEnabled) {
+    await syncChromeTabGroupsWithoutImportEcho();
   }
 }
 
@@ -1996,75 +2892,18 @@ document.addEventListener('click', async (e) => {
 
   const card = actionEl.closest('.mission-card');
 
-  // ---- Open/close the Move to group menu ----
-  if (action === 'toggle-move-menu') {
+  if (action === 'rename-session-group') {
     e.stopPropagation();
-    const menu = actionEl.closest('.chip-move-wrap')?.querySelector('.chip-move-menu');
-    const shouldOpen = Boolean(menu?.hidden);
-    closeMoveMenus();
-    if (menu && shouldOpen) {
-      menu.hidden = false;
-      actionEl.classList.add('is-open');
-      actionEl.setAttribute('aria-expanded', 'true');
-    }
+    const groupKey = actionEl.dataset.groupKey || '';
+    const manualGroupId = actionEl.dataset.manualGroupId || '';
+    openGroupRenameEditor(groupKey, manualGroupId);
     return;
   }
 
-  // ---- Move a tab into an existing manual group ----
-  if (action === 'move-tab-to-group') {
+  if (action === 'cancel-group-rename') {
     e.stopPropagation();
-    const tabId = Number(actionEl.dataset.tabId);
-    const groupId = actionEl.dataset.groupId;
-    const group = sessionGroupsState.groups.find(item => item.id === groupId);
-    if (!tabId || !groupId || !group) return;
-
-    const nextState = assignTabToSessionGroup(sessionGroupsState, tabId, groupId);
-    await saveSessionGroups(nextState);
-    closeMoveMenus();
+    closeGroupRenameEditor();
     await renderDashboard();
-    showToast(runtimeT ? runtimeT('toastMovedTo', { name: group.name }) : `Moved to ${group.name}`);
-    return;
-  }
-
-  // ---- Create a new manual group and move this tab into it ----
-  if (action === 'move-tab-to-new-group') {
-    e.stopPropagation();
-    const tabId = Number(actionEl.dataset.tabId);
-    if (!tabId) return;
-
-    const nextName = window.prompt(runtimeT ? runtimeT('promptNewGroupName') : 'New group name');
-    if (!nextName || !nextName.trim()) {
-      closeMoveMenus();
-      return;
-    }
-
-    try {
-      const created = addSessionGroup(sessionGroupsState, nextName);
-      const nextState = assignTabToSessionGroup(created.state, tabId, created.group.id);
-      await saveSessionGroups(nextState);
-      closeMoveMenus();
-      await renderDashboard();
-      showToast(runtimeT ? runtimeT('toastCreatedGroup', { name: created.group.name }) : `Created ${created.group.name}`);
-    } catch (err) {
-      showToast(err.message || (runtimeT ? runtimeT('toastCouldNotCreateGroup') : 'Could not create group'));
-    }
-    return;
-  }
-
-  // ---- Move a tab back to its original automatic group ----
-  if (action === 'move-tab-to-original') {
-    e.stopPropagation();
-    const tabId = Number(actionEl.dataset.tabId);
-    if (!tabId) return;
-
-    const nextState = pruneSessionGroups(
-      clearTabSessionGroup(sessionGroupsState, tabId),
-      openTabs.map(tab => tab.id)
-    );
-    await saveSessionGroups(nextState);
-    closeMoveMenus();
-    await renderDashboard();
-    showToast(runtimeT ? runtimeT('toastMovedBackToOriginalGroup') : 'Moved back to original group');
     return;
   }
 
@@ -2080,24 +2919,9 @@ document.addEventListener('click', async (e) => {
 
   // ---- Focus a specific tab ----
   if (action === 'focus-tab') {
+    if (Date.now() < suppressPageChipClickUntil) return;
     const tabUrl = actionEl.dataset.tabUrl;
     if (tabUrl) await focusTab(tabUrl);
-    return;
-  }
-
-  // ---- Jump to a domain group card from the top icon nav ----
-  if (action === 'toggle-pin-order') {
-    e.stopPropagation();
-    const nextState = setPinEnabled(
-      groupOrderState,
-      !groupOrderState.pinEnabled,
-      domainGroups.map(group => group.domain)
-    );
-    await saveGroupOrder(nextState);
-    await renderDashboard();
-    showToast(nextState.pinEnabled
-      ? (runtimeT ? runtimeT('toastPinnedOrder') : 'Pinned current order')
-      : (runtimeT ? runtimeT('toastPinOrderOff') : 'Pin order turned off'));
     return;
   }
 
@@ -2376,12 +3200,10 @@ document.addEventListener('click', async (e) => {
         b.style.opacity    = '0';
         setTimeout(() => b.remove(), 200);
       });
-      card.querySelectorAll('.open-tabs-badge').forEach(badge => {
-        if (badge.classList.contains('is-duplicate')) {
-          badge.style.transition = 'opacity 0.2s';
-          badge.style.opacity    = '0';
-          setTimeout(() => badge.remove(), 200);
-        }
+      card.querySelectorAll('.duplicate-count-badge').forEach(badge => {
+        badge.style.transition = 'opacity 0.2s';
+        badge.style.opacity    = '0';
+        setTimeout(() => badge.remove(), 200);
       });
       card.classList.remove('has-amber-bar');
       card.classList.add('has-neutral-bar');
@@ -2427,8 +3249,6 @@ document.addEventListener('click', (e) => {
     setThemeMenuOpen(false);
   }
 
-  if (e.target.closest('.chip-move-wrap')) return;
-  closeMoveMenus();
 });
 
 document.addEventListener('click', (e) => {
@@ -2455,9 +3275,21 @@ document.addEventListener('click', (e) => {
   }
 });
 
+document.addEventListener('pointerdown', (e) => {
+  if (!groupRenameEditorState) return;
+  if (e.target.closest('.mission-rename-form') || e.target.closest('[data-action="rename-session-group"]')) return;
+  void submitGroupRenameEditor();
+});
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && themeMenuOpen) {
     setThemeMenuOpen(false, { restoreFocus: true });
+    return;
+  }
+
+  if (e.key === 'Escape' && groupRenameEditorState) {
+    closeGroupRenameEditor();
+    void renderDashboard();
     return;
   }
 
@@ -2603,26 +3435,51 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('pointerdown', (e) => {
   const chipHandle = e.target.closest('[data-chip-drag-handle="tab"]');
-  if (chipHandle && e.button === 0) {
-    const item = chipHandle.closest('[data-chip-sort-id]');
+  const chipItem = e.target.closest('[data-chip-sort-id]');
+  const chipAction = e.target.closest('.chip-actions');
+  if (chipItem && !chipAction && e.button === 0) {
+    const item = chipItem;
     const listEl = item?.parentElement;
     const groupKey = item?.dataset.chipGroupId || '';
     if (!item || !listEl || !groupKey) return;
 
     e.preventDefault();
+    e.stopPropagation();
     draggedPageChipId = item.dataset.chipSortId || '';
     draggedPageChipEl = item;
+    const dragHandleEl = chipHandle || item;
+    document.body.classList.add('page-chip-drag-armed');
 
     const rect = item.getBoundingClientRect();
     pageChipDragState = {
-      groupKey,
-      listEl,
+      sourceGroupKey: groupKey,
+      sourceListEl: listEl,
+      dropGroupKey: groupKey,
+      dropListEl: listEl,
+      dropCardEl: item.closest('.mission-card'),
+      createNewGroup: false,
+      newGroupPlacement: '',
+      handleEl: dragHandleEl,
+      pointerId: e.pointerId,
       x: e.clientX,
       y: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
       moved: false,
     };
+    logPageChipDragDebug('pointerdown', {
+      groupKey,
+      chip: draggedPageChipId,
+      x: Math.round(e.clientX),
+      y: Math.round(e.clientY),
+      pointerId: e.pointerId,
+    });
+    if (typeof dragHandleEl.setPointerCapture === 'function' && e.pointerId != null) {
+      try {
+        dragHandleEl.setPointerCapture(e.pointerId);
+        logPageChipDragDebug('capture', { pointerId: e.pointerId });
+      } catch {}
+    }
     return;
   }
 
@@ -2654,16 +3511,12 @@ document.addEventListener('pointermove', (e) => {
   if (draggedPageChipId && pageChipDragState) {
     const distance = Math.hypot(e.clientX - pageChipDragState.x, e.clientY - pageChipDragState.y);
     if (!pageChipDragState.moved && distance >= 4) {
-      pageChipDragState.moved = true;
-      document.body.classList.add('page-chip-list-dragging');
-      draggedPageChipEl?.classList.add('is-dragging');
-      draggedPageChipEl?.style.setProperty('--drag-width', `${draggedPageChipEl.getBoundingClientRect().width}px`);
-      ensurePageChipPlaceholder();
+      startPageChipDragVisuals();
     }
 
     if (pageChipDragState.moved) {
       updateDraggedPageChipPosition(e.clientX, e.clientY);
-      previewPageChipOrder(e.clientY);
+      previewPageChipOrder(e.clientX, e.clientY);
     }
     return;
   }
@@ -2685,33 +3538,37 @@ document.addEventListener('pointermove', (e) => {
   previewDrawerItemOrder(e.clientY);
 });
 
-document.addEventListener('pointerup', async () => {
+document.addEventListener('pointerup', async (e) => {
   if (draggedPageChipId && pageChipDragState) {
-    const moved = pageChipDragState.moved;
-    const draggedGroupKey = pageChipDragState.groupKey;
-    if (moved) {
-      const orderUrls = [...pageChipDragState.listEl.children]
-        .map(node => {
-          if (node === pageChipPlaceholderEl) return draggedPageChipId;
-          if (node === draggedPageChipEl) return '';
-          return node.dataset?.chipSortId || '';
-        })
-        .filter(Boolean);
-
-      await saveGroupTabRowOrder(pageChipDragState.groupKey, orderUrls);
-      if (draggedPageChipEl && pageChipPlaceholderEl) {
-        pageChipDragState.listEl.insertBefore(draggedPageChipEl, pageChipPlaceholderEl);
-      }
-      if (typeof syncChromeTabGroups === 'function') {
-        await syncChromeTabGroups(getChromeSyncGroups(domainGroups));
+    if (pageChipDragState.pointerId != null && e.pointerId != null && pageChipDragState.pointerId !== e.pointerId) return;
+    logPageChipDragDebug('pointerup', {
+      x: Math.round(e.clientX),
+      y: Math.round(e.clientY),
+      pointerId: e.pointerId,
+      moved: pageChipDragState.moved,
+    });
+    if (!pageChipDragState.moved) {
+      const distance = Math.hypot(e.clientX - pageChipDragState.x, e.clientY - pageChipDragState.y);
+      if (distance >= 4) {
+        startPageChipDragVisuals();
       }
     }
-
-    clearPageChipDragState();
-
-    if (moved) {
-      updateGroupNavButtonIcon(draggedGroupKey);
+    updateDraggedPageChipPosition(e.clientX, e.clientY);
+    const stickyTarget = pageChipDragState.lastResolvedDropTarget;
+    const stickyIsNonSource = stickyTarget && (
+      stickyTarget.kind === 'new-group'
+      || (stickyTarget.kind === 'group' && stickyTarget.groupKey && stickyTarget.groupKey !== pageChipDragState.sourceGroupKey)
+    );
+    if (!stickyIsNonSource) {
+      syncPageChipDropTarget(e.clientX, e.clientY);
+    } else {
+      logPageChipDragDebug('pointerup-keep-target', {
+        kind: stickyTarget.kind,
+        groupKey: stickyTarget.groupKey || '',
+        placement: stickyTarget.placement || '',
+      });
     }
+    await finishPageChipDrag();
     return;
   }
 
@@ -2739,6 +3596,13 @@ document.addEventListener('pointerup', async () => {
       await renderTodoPanel();
     }
   }
+});
+
+document.addEventListener('pointercancel', async (e) => {
+  if (!draggedPageChipId || !pageChipDragState) return;
+  if (pageChipDragState.pointerId != null && e.pointerId != null && pageChipDragState.pointerId !== e.pointerId) return;
+  logPageChipDragDebug('pointercancel', { pointerId: e.pointerId });
+  await finishPageChipDrag();
 });
 
 document.addEventListener('pointerdown', (e) => {
@@ -2779,6 +3643,7 @@ document.addEventListener('pointerup', async () => {
   if (!draggedGroupId) return;
 
   const moved = dragStartPoint?.moved;
+  const nextGroupOrder = groupOrderState.sessionOrder?.slice() || domainGroups.map(group => String(group.domain));
   if (dragStartPoint?.moved) {
     await saveGroupOrder(groupOrderState);
     suppressJumpUntil = Date.now() + 250;
@@ -2787,7 +3652,8 @@ document.addEventListener('pointerup', async () => {
   clearGroupDragState();
 
   if (moved) {
-    await renderDashboard();
+    applyLiveGroupOrder(nextGroupOrder, { reorderCards: true, reorderNav: true });
+    await syncChromeTabGroupsWithoutImportEcho();
   }
 });
 
@@ -2839,6 +3705,24 @@ document.addEventListener('input', async (e) => {
   await renderDeferredColumn();
 });
 
+document.addEventListener('input', (e) => {
+  const renameInput = e.target.closest('.mission-rename-input');
+  if (!renameInput || !groupRenameEditorState) return;
+  groupRenameEditorState = {
+    ...groupRenameEditorState,
+    value: renameInput.value,
+    shouldFocus: false,
+  };
+});
+
+document.addEventListener('focusout', (e) => {
+  const renameInput = e.target.closest('.mission-rename-input');
+  if (!renameInput || !groupRenameEditorState) return;
+  const nextFocused = e.relatedTarget;
+  if (nextFocused && nextFocused.closest?.('.mission-rename-form')) return;
+  void submitGroupRenameEditor();
+});
+
 document.addEventListener('input', async (e) => {
   if (e.target.id !== 'todoSearchInput') return;
   todoSearchQuery = e.target.value.trim();
@@ -2872,6 +3756,12 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('submit', async (e) => {
+  if (e.target.matches('.mission-rename-form')) {
+    e.preventDefault();
+    await submitGroupRenameEditor();
+    return;
+  }
+
   if (e.target.id !== 'headerSearchForm') return;
 
   e.preventDefault();
@@ -2910,7 +3800,7 @@ function injectDynamicAnimationStyles() {
       ? 0.25 + (i - 1) * STAGGER_INCREMENT
       : 0.25 + (MAX_STAGGER_COUNT - 1) * STAGGER_INCREMENT;
     rules.push(
-      `.active-section .missions .mission-card:nth-child(${i}) { animation: fadeUp 0.4s ease ${delay.toFixed(2)}s both; }`
+      `body.${ENTRY_ANIMATIONS_CLASS} .active-section .missions .mission-card:nth-child(${i}) { animation: fadeUp 0.4s ease ${delay.toFixed(2)}s both; }`
     );
   }
 
@@ -2920,7 +3810,7 @@ function injectDynamicAnimationStyles() {
       ? 0.5 + (i - 1) * STAGGER_INCREMENT
       : 0.5 + (MAX_STAGGER_COUNT - 1) * STAGGER_INCREMENT;
     rules.push(
-      `.abandoned-section .missions .mission-card:nth-child(${i}) { animation: fadeUp 0.4s ease ${delay.toFixed(2)}s both; }`
+      `body.${ENTRY_ANIMATIONS_CLASS} .abandoned-section .missions .mission-card:nth-child(${i}) { animation: fadeUp 0.4s ease ${delay.toFixed(2)}s both; }`
     );
   }
 
@@ -2988,6 +3878,7 @@ function setupImageErrorHandlers() {
 
 async function initializeDashboardRuntime() {
   injectDynamicAnimationStyles();
+  primeEntryAnimations();
   await loadThemePreferences();
   if (typeof loadChromeTabGroupsSetting === 'function') {
     chromeTabGroupsEnabled = await loadChromeTabGroupsSetting();
@@ -2997,10 +3888,13 @@ async function initializeDashboardRuntime() {
     await fetchOpenTabs();
     const realTabs = getRealTabs();
     await loadSessionGroups(realTabs.map(tab => tab.id));
-    const importedCount = await importChromeNativeGroupsIntoSessionGroups();
-    if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+    if (shouldImportChromeGroupsIntoSessionState()) {
+      const importedCount = await importChromeNativeGroupsIntoSessionGroups();
+      if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+    }
   }
   ensureChromeTabGroupsSubscription();
+  disableChromeTabGroupsImportModeForLocalEdits();
   await renderDashboard();
   await collapseChromeGroupsForCurrentTabHarborTab();
   updateBackToTopVisibility();
@@ -3053,6 +3947,7 @@ function setupTabChangeListener() {
 
 function mountDashboardRuntime() {
   if (!window.__tabHarborRuntimeMounted) {
+    document.addEventListener('pointerdown', disableEntryAnimations, { capture: true, passive: true });
     window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
     window.addEventListener('focus', () => {
       void collapseChromeGroupsForCurrentTabHarborTab();

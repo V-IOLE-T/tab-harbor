@@ -1215,8 +1215,7 @@ body.theme-tone-dark .deferred-shell {
   box-shadow: 0 6px 14px color-mix(in srgb, var(--workspace-accent) 9%, transparent);
 }
 
-.group-nav-button::after,
-.group-pin-toggle::after {
+.group-nav-button::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 8px);
@@ -1264,51 +1263,6 @@ body.theme-tone-dark .deferred-shell {
   font-weight: 700;
   color: var(--theme-accent-strong);
   letter-spacing: 0.3px;
-}
-
-.group-pin-toggle {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Public Sans', sans-serif;
-  padding: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.group-pin-toggle:hover {
-  color: var(--theme-accent-strong);
-  background: var(--theme-control-hover);
-}
-
-.group-pin-toggle svg {
-  width: 20px;
-  height: 20px;
-  transform: none;
-}
-
-.group-pin-toggle::after {
-  right: 0;
-  transform: translateY(2px);
-}
-
-.group-pin-toggle:hover::after,
-.group-pin-toggle:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.group-pin-toggle.is-active {
-  background: var(--theme-accent-soft);
-  color: var(--theme-accent-strong);
 }
 
 body.group-dragging {
@@ -1364,10 +1318,6 @@ body.group-dragging .group-nav-button {
   transform: translateY(-1px);
 }
 
-.mission-card:has(.chip-move-trigger.is-open) {
-  z-index: 40;
-}
-
 /* Closing animation — card scales down and fades out */
 .mission-card.closing {
   opacity: 0;
@@ -1411,11 +1361,62 @@ body.group-dragging .group-nav-button {
   flex-wrap: wrap;
 }
 
+.mission-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .mission-name {
   font-weight: 600;
   font-size: 15px;
   color: var(--ink);
   letter-spacing: -0.01em;
+}
+
+.mission-rename-trigger {
+  border: none;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.mission-rename-trigger:hover .mission-name,
+.mission-rename-trigger:focus-visible .mission-name {
+  color: color-mix(in srgb, var(--ink) 88%, var(--theme-accent-strong) 12%);
+}
+
+.mission-rename-trigger:focus-visible {
+  outline: none;
+}
+
+.mission-rename-form {
+  display: inline-flex;
+  align-items: center;
+  min-width: min(520px, 100%);
+  width: min(520px, 100%);
+  max-width: 100%;
+}
+
+.mission-rename-input {
+  min-width: 280px;
+  width: 100%;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--workspace-chip-border) 72%, var(--ink) 28%);
+  background: color-mix(in srgb, var(--card-bg) 94%, var(--theme-accent-soft) 6%);
+  color: var(--ink);
+  font: 600 15px/1.2 'Public Sans', sans-serif;
+}
+
+.mission-rename-input:focus {
+  outline: none;
+  border-color: var(--theme-accent-muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-soft) 55%, transparent);
 }
 
 .mission-tag {
@@ -1443,26 +1444,16 @@ body.group-dragging .group-nav-button {
 }
 
 /* Tab indicator badge — shows how many Chrome tabs are still open for this mission */
-.open-tabs-badge {
+.duplicate-count-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   font-size: 10px;
   font-weight: 600;
   color: var(--workspace-chip-text);
-  background: var(--workspace-chip-bg);
+  background: var(--workspace-chip-bg-strong);
   border: 1px solid var(--workspace-chip-border);
   padding: 2px 6px;
   border-radius: 3px;
-}
-
-.open-tabs-badge.is-duplicate {
-  background: var(--workspace-chip-bg-strong);
-}
-
-.open-tabs-badge svg {
-  width: 9px;
-  height: 9px;
 }
 
 .mission-summary {
@@ -1477,6 +1468,15 @@ body.group-dragging .group-nav-button {
   flex-direction: column;
   gap: 0;
   transition: all 0.3s ease-out;
+}
+
+.mission-card.is-drop-target {
+  box-shadow: 0 18px 34px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
+}
+
+.mission-card.is-drop-target .mission-pages {
+  background: color-mix(in srgb, var(--workspace-accent-soft) 20%, transparent);
+  border-radius: 12px;
 }
 
 /* Smooth height transition when chips are removed */
@@ -1503,6 +1503,8 @@ body.group-dragging .group-nav-button {
 .page-chip > .chip-reorder-handle {
   flex-shrink: 0;
   margin-left: 1px;
+  width: 30px;
+  height: 30px;
 }
 
 .page-chip:last-child,
@@ -1577,74 +1579,12 @@ body.group-dragging .group-nav-button {
 
 .chip-reorder-handle {
   opacity: 1;
-  color: color-mix(in srgb, var(--workspace-chip-text) 82%, var(--ink) 18%);
-  background: color-mix(in srgb, var(--workspace-chip-bg-strong) 92%, var(--card-bg) 8%);
+  color: color-mix(in srgb, var(--ink) 84%, var(--muted) 16%);
 }
 
 .chip-reorder-handle:hover {
   opacity: 1;
   color: var(--ink);
-  background: color-mix(in srgb, var(--workspace-chip-bg-strong) 92%, var(--card-bg) 8%);
-}
-
-.chip-move-wrap {
-  position: relative;
-}
-
-.chip-move-trigger.is-open {
-  opacity: 1;
-  background: color-mix(in srgb, var(--workspace-accent-soft) 56%, transparent);
-  color: var(--accent-amber);
-}
-
-.chip-move-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 168px;
-  padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--workspace-accent-border) calc(var(--custom-border-opacity) + 18%), var(--warm-gray) 28%);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--card-bg) calc(var(--custom-surface-opacity) + 82%), transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--workspace-accent) 14%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  z-index: 30;
-}
-
-.chip-move-menu[hidden] {
-  display: none !important;
-}
-
-.move-menu-btn {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 12px;
-  font-family: 'Public Sans', sans-serif;
-  text-align: left;
-  padding: 7px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-  min-height: 32px;
-}
-
-.move-menu-btn:hover {
-  background: rgba(154, 145, 138, 0.08);
-}
-
-.move-menu-btn-primary {
-  color: var(--accent-amber);
-  font-weight: 600;
-}
-
-.move-menu-empty {
-  padding: 7px 8px;
-  font-size: 11px;
-  color: var(--muted);
 }
 
 /* ---- Chip action buttons (save + close) ---- */
@@ -2282,13 +2222,13 @@ footer {
   to { opacity: 1; transform: translateY(0); }
 }
 
-header { animation: fadeUp 0.5s ease both; }
-.tab-cleanup-banner { animation: fadeUp 0.5s ease 0.1s both; }
-.nudge-banner { animation: fadeUp 0.5s ease 0.15s both; }
-.active-section .section-header { animation: fadeUp 0.5s ease 0.2s both; }
-.abandoned-section .section-header { animation: fadeUp 0.5s ease 0.45s both; }
-footer { animation: fadeUp 0.5s ease 0.65s both; }
-.deferred-column .section-header { animation: fadeUp 0.5s ease 0.1s both; }
+body.entry-animations-enabled header { animation: fadeUp 0.5s ease both; }
+body.entry-animations-enabled .tab-cleanup-banner { animation: fadeUp 0.5s ease 0.1s both; }
+body.entry-animations-enabled .nudge-banner { animation: fadeUp 0.5s ease 0.15s both; }
+body.entry-animations-enabled .active-section .section-header { animation: fadeUp 0.5s ease 0.2s both; }
+body.entry-animations-enabled .abandoned-section .section-header { animation: fadeUp 0.5s ease 0.45s both; }
+body.entry-animations-enabled footer { animation: fadeUp 0.5s ease 0.65s both; }
+body.entry-animations-enabled .deferred-column .section-header { animation: fadeUp 0.5s ease 0.1s both; }
 
 
 /* ================================================================
@@ -2891,13 +2831,14 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--ink) 86%, var(--muted) 14%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
   border-radius: 999px;
-  opacity: 0.45;
+  opacity: 1;
+  box-shadow: none;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
@@ -2934,6 +2875,30 @@ body.page-chip-list-dragging .chip-reorder-handle {
   cursor: grabbing;
 }
 
+body.page-chip-drag-armed,
+body.page-chip-drag-armed * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.page-chip-drop-new-group .main-content {
+  outline: none;
+}
+
+.mission-drop-new-group-slot {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  pointer-events: none;
+}
+
+.mission-drop-new-group-line {
+  width: 100%;
+  border-top: 2px dashed color-mix(in srgb, var(--workspace-accent-border) 60%, var(--warm-gray) 40%);
+  opacity: 0.9;
+}
+
 .page-chip.is-dragging {
   position: fixed;
   left: var(--drag-left, 0);
@@ -2941,10 +2906,7 @@ body.page-chip-list-dragging .chip-reorder-handle {
   width: var(--drag-width, auto);
   z-index: 120;
   pointer-events: none;
-  border-bottom-color: transparent;
-  border-radius: 12px;
-  background: rgba(255, 253, 249, 0.96);
-  box-shadow: 0 18px 34px rgba(26, 22, 19, 0.16);
+  opacity: 0;
 }
 
 .chip-reorder-placeholder {
@@ -3346,7 +3308,6 @@ body.page-chip-list-dragging .chip-reorder-handle {
   .drawer-reorder-handle,
   .drawer-title-btn,
   .group-nav-button,
-  .group-pin-toggle,
   .header-search-input,
   .header-theme-trigger,
   .move-menu-btn,

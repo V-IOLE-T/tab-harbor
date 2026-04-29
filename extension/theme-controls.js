@@ -472,7 +472,6 @@ function applyThemePreferences() {
 function renderThemeMenu() {
   const trigger = document.getElementById('themeMenuTrigger');
   const modeOptions = document.getElementById('themeModeOptions');
-  const pinToggle = document.getElementById('headerPinToggle');
   const panel = document.getElementById('themeMenuPanel');
   const options = document.getElementById('themeOptions');
   const transparencyRange = document.getElementById('themeTransparencyRange');
@@ -483,15 +482,6 @@ function renderThemeMenu() {
   panel.hidden = !themeMenuOpen;
   transparencyRange.value = String(themePreferences.surfaceOpacity);
   transparencyValue.textContent = `${themePreferences.surfaceOpacity}%`;
-  if (pinToggle && typeof groupOrderState !== 'undefined') {
-    const pinTooltip = groupOrderState.pinEnabled
-      ? (themeT ? themeT('pinnedOrder') : 'Pinned order')
-      : (themeT ? themeT('pinOrder') : 'Pin order');
-    pinToggle.classList.toggle('is-active', groupOrderState.pinEnabled);
-    pinToggle.dataset.tooltip = pinTooltip;
-    pinToggle.setAttribute('aria-label', pinTooltip);
-    pinToggle.setAttribute('aria-pressed', String(groupOrderState.pinEnabled));
-  }
 
   modeOptions.innerHTML = THEME_MODE_ORDER.map(id => `
     <button

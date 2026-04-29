@@ -8,6 +8,7 @@ const {
   assignTabToSessionGroup,
   clearTabSessionGroup,
   pruneSessionGroups,
+  renameSessionGroup,
 } = require('./session-groups.js');
 
 test('addSessionGroup creates a named group and keeps names unique', () => {
@@ -48,4 +49,21 @@ test('pruneSessionGroups removes closed tabs and empty groups', () => {
 
   assert.deepEqual(pruned.assignments, { '101': 'g1' });
   assert.deepEqual(pruned.groups.map(group => group.id), ['g1']);
+});
+
+test('renameSessionGroup updates the target name and preserves uniqueness', () => {
+  const initialState = {
+    groups: [
+      { id: 'g1', name: 'Work', createdAt: '2026-04-16T00:00:00.000Z' },
+      { id: 'g2', name: 'Research', createdAt: '2026-04-16T00:01:00.000Z' },
+    ],
+    assignments: {
+      '101': 'g1',
+    },
+  };
+
+  const renamed = renameSessionGroup(initialState, 'g1', 'Reading desk');
+  assert.equal(renamed.groups[0].name, 'Reading desk');
+  assert.equal(renamed.assignments['101'], 'g1');
+  assert.throws(() => renameSessionGroup(renamed, 'g1', 'Research'), /already exists/i);
 });

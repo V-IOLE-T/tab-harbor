@@ -199,6 +199,35 @@
     }
   }
 
+  async function reorderWindowTabsByDesiredOrder(windowId, desiredTabIds) {
+    if (!Number.isFinite(windowId) || !Array.isArray(desiredTabIds) || desiredTabIds.length <= 1) return;
+
+    let windowTabs = [];
+    try {
+      windowTabs = await chrome.tabs.query({ windowId });
+    } catch {
+      return;
+    }
+
+    const relevantTabs = windowTabs
+      .filter(tab => desiredTabIds.includes(tab.id))
+      .sort((a, b) => a.index - b.index);
+    if (relevantTabs.length <= 1) return;
+
+    const currentOrder = relevantTabs.map(tab => tab.id);
+    if (currentOrder.length === desiredTabIds.length &&
+        currentOrder.every((tabId, index) => tabId === desiredTabIds[index])) {
+      return;
+    }
+
+    const baseIndex = Math.min(...relevantTabs.map(tab => tab.index));
+    for (const [offset, tabId] of desiredTabIds.entries()) {
+      try {
+        await chrome.tabs.move(tabId, { windowId, index: baseIndex + offset });
+      } catch {}
+    }
+  }
+
   async function removeAllChromeGroups() {
     muteChromeGroupEvents();
     const allTrackedTabIds = [];
@@ -235,6 +264,7 @@
 
     // Build desired state: { groupKey: { windowId: [tabIds] } }
     const desired = {};
+    const desiredWindowOrders = {};
     for (const group of domainGroups) {
       const groupKey = group.domain;
       for (const tab of (group.tabs || [])) {
@@ -243,6 +273,8 @@
         if (!desired[groupKey]) desired[groupKey] = {};
         if (!desired[groupKey][windowId]) desired[groupKey][windowId] = [];
         desired[groupKey][windowId].push(tab.id);
+        if (!desiredWindowOrders[windowId]) desiredWindowOrders[windowId] = [];
+        desiredWindowOrders[windowId].push(tab.id);
       }
     }
 
@@ -333,6 +365,10 @@
           chromeGroupMap[groupKey][windowId] = chromeGroupId;
         }
       }
+    }
+
+    for (const [windowIdStr, orderedTabIds] of Object.entries(desiredWindowOrders)) {
+      await reorderWindowTabsByDesiredOrder(Number(windowIdStr), orderedTabIds);
     }
     await persistChromeGroupMap();
   }
