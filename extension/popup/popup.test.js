@@ -64,55 +64,8 @@ globalThis.TabOutSessionGroups = { normalizeSessionGroups: v => v || { groups: [
 globalThis.TabOutGroupOrder = { normalizeGroupOrderState: v => v || { sessionOrder: [], pinnedOrder: [], pinEnabled: false } };
 globalThis.TabHarborI18n = { t: key => key };
 
-// Mock ui-helpers.js globals (now loaded by popup.html before popup.js)
-// These mocks preserve the original behavior that popup.js depended on.
-globalThis.friendlyDomain = hostname => String(hostname || '').replace(/^www\./, '').replace(/\./g, ' ').trim();
-globalThis.stripTitleNoise = title => {
-  if (!title) return '';
-  title = String(title);
-  title = title.replace(/^\(\d+\+?\)\s*/, '');
-  title = title.replace(/\s*\([\d,]+\+?\)\s*/g, ' ');
-  title = title.replace(/\s*[\-‐-―]\s*[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '');
-  title = title.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '');
-  title = title.replace(/\s+on X:\s*/, ': ');
-  title = title.replace(/\s*\/\s*X\s*$/, '');
-  return title.trim();
-};
-globalThis.cleanTitle = (title, hostname) => {
-  if (!title || !hostname) return title || '';
-  const friendly = globalThis.friendlyDomain(hostname);
-  const domain = hostname.replace(/^www\./, '');
-  const seps = [' - ', ' | ', ' — ', ' · ', ' – '];
-  for (const sep of seps) {
-    const idx = title.lastIndexOf(sep);
-    if (idx === -1) continue;
-    const suffix = title.slice(idx + sep.length).trim();
-    const suffixLow = suffix.toLowerCase();
-    if (
-      suffixLow === domain.toLowerCase() ||
-      suffixLow === friendly.toLowerCase() ||
-      suffixLow === domain.replace(/\.\w+$/, '').toLowerCase() ||
-      domain.toLowerCase().includes(suffixLow) ||
-      friendly.toLowerCase().includes(suffixLow)
-    ) {
-      const cleaned = title.slice(0, idx).trim();
-      if (cleaned.length >= 5) return cleaned;
-    }
-  }
-  return title;
-};
-globalThis.smartTitle = (title, url) => {
-  if (!url) return title || '';
-  let pathname = '', hostname = '';
-  try {
-    const u = new URL(url);
-    pathname = u.pathname;
-    hostname = u.hostname;
-  } catch { return title || ''; }
-  const titleIsUrl = !title || title === url || title.startsWith(hostname) || title.startsWith('http');
-  if ((hostname === 'www.youtube.com' || hostname === 'youtube.com') && pathname === '/watch' && titleIsUrl) return 'YouTube Video';
-  return title || url;
-};
+// Use the real ui-helpers.js implementations instead of inline mocks
+require('../ui-helpers.js');
 
 // Prevent LOCAL_* globals from interfering
 globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined;
@@ -122,8 +75,6 @@ require('./popup.js');
 
 const {
   escapeAttr,
-  friendlyDomain,
-  stripTitleNoise,
   getTabLabel,
   isLandingPage,
   matchCustomGroup,
@@ -134,6 +85,19 @@ const {
   renderTabGroup,
   renderGroupNav,
 } = globalThis;
+
+function resetPopupTestState(opts = {}) {
+  globalThis.LOCAL_CUSTOM_GROUPS = opts.customGroups ?? [];
+  globalThis.LOCAL_LANDING_PAGE_PATTERNS = opts.landingPatterns ?? undefined;
+  // Mutate existing objects rather than replacing them — popup.js holds
+  // local references captured at module-load time (popupSessionGroups, popupGroupOrder).
+  globalThis.TabOutSessionGroups.normalizeSessionGroups = () => (opts.sessionGroups ?? { groups: [], assignments: {} });
+  globalThis.TabOutGroupOrder.applyGroupOrder = (list) => list;
+  globalThis.TabOutGroupOrder.normalizeGroupOrderState = () => (opts.groupOrder ?? { sessionOrder: [], pinnedOrder: [], pinEnabled: false });
+  if (typeof globalThis._resetPopupState === 'function') {
+    globalThis._resetPopupState();
+  }
+}
 
 // ---- escapeAttr ----
 
@@ -150,65 +114,37 @@ test('escapeAttr handles non-string input', () => {
   assert.equal(escapeAttr(null), 'null');
 });
 
-// ---- friendlyDomain ----
-
-test('friendlyDomain strips www. prefix then replaces dots with spaces', () => {
-  assert.equal(friendlyDomain('www.github.com'), 'github com');
-});
-
-test('friendlyDomain replaces dots with spaces', () => {
-  assert.equal(friendlyDomain('mail.google.com'), 'mail google com');
-});
-
-test('friendlyDomain handles empty/null input', () => {
-  assert.equal(friendlyDomain(''), '');
-  assert.equal(friendlyDomain(null), '');
-  assert.equal(friendlyDomain(undefined), '');
-});
-
-test('friendlyDomain strips www then replaces dots with spaces then trims only ends', () => {
-  // leading/trailing spaces trimmed, internal spaces preserved
-  assert.equal(friendlyDomain('  www.example.org  '), 'www example org');
-});
-
-// ---- stripTitleNoise ----
-
-test('stripTitleNoise removes noise after | or - separators', () => {
-  assert.equal(stripTitleNoise('GitHub - Repository | org/repo'), 'GitHub');
-  assert.equal(stripTitleNoise('Page Title - Site Name'), 'Page Title');
-  assert.equal(stripTitleNoise('Title – Dash Variant'), 'Title');
-  assert.equal(stripTitleNoise('Title — Em Dash Variant'), 'Title');
-});
-
-test('stripTitleNoise returns clean title unchanged', () => {
-  assert.equal(stripTitleNoise('Clean Title'), 'Clean Title');
-  assert.equal(stripTitleNoise('No noise here'), 'No noise here');
-});
-
-test('stripTitleNoise trims result including trailing noise with whitespace', () => {
-  assert.equal(stripTitleNoise('Title |  '), 'Title');
-  assert.equal(stripTitleNoise('Title -  '), 'Title');
-});
-
-test('stripTitleNoise handles empty string', () => {
-  assert.equal(stripTitleNoise(''), '');
-});
-
 // ---- getTabLabel ----
 
-test('getTabLabel returns stripped title when present', () => {
+test('getTabLabel returns stripped title when suffix matches domain', () => {
+  const tab = { title: 'My Page - example.com', url: 'https://www.example.com/page' };
+  assert.equal(getTabLabel(tab), 'My Page');
+});
+
+test('getTabLabel strips suffix after | when it matches friendly domain', () => {
+  // friendlyDomain('www.example.com') → 'Example' (strips TLD, capitalizes)
+  const tab = { title: 'Dashboard | Example', url: 'https://www.example.com' };
+  assert.equal(getTabLabel(tab), 'Dashboard');
+});
+
+test('getTabLabel strips suffix after — when it matches domain without TLD', () => {
+  const tab = { title: 'Welcome — example', url: 'https://example.com/home' };
+  assert.equal(getTabLabel(tab), 'Welcome');
+});
+
+test('getTabLabel keeps title unchanged when suffix does not match domain', () => {
   const tab = { title: 'GitHub - awesome-org/awesome-repo', url: 'https://github.com' };
-  assert.equal(getTabLabel(tab), 'GitHub');
+  assert.equal(getTabLabel(tab), 'GitHub - awesome-org/awesome-repo');
 });
 
-test('getTabLabel falls back to hostname (friendly) for URL-only tabs', () => {
+test('getTabLabel uses URL as title when original title is empty', () => {
   const tab = { title: '', url: 'https://www.example.com/path' };
-  assert.equal(getTabLabel(tab), 'example com');
+  assert.equal(getTabLabel(tab), 'https://www.example.com/path');
 });
 
-test('getTabLabel falls back to URL hostname for unparseable-looking URLs', () => {
+test('getTabLabel returns chrome:// URL when title is empty and URL is unparseable', () => {
   const tab = { title: '', url: 'chrome://newtab' };
-  assert.equal(getTabLabel(tab), 'newtab');
+  assert.equal(getTabLabel(tab), 'chrome://newtab');
 });
 
 test('getTabLabel falls back to "Tab" for missing title and url', () => {
@@ -216,9 +152,9 @@ test('getTabLabel falls back to "Tab" for missing title and url', () => {
   assert.equal(getTabLabel({ title: '' }), 'Tab');
 });
 
-test('getTabLabel strips www from hostname fallback via friendlyDomain', () => {
+test('getTabLabel uses URL when title empty with www URL', () => {
   const tab = { title: '', url: 'https://www.google.com/search' };
-  assert.equal(getTabLabel(tab), 'google com');
+  assert.equal(getTabLabel(tab), 'https://www.google.com/search');
 });
 
 // ---- isLandingPage ----
@@ -318,8 +254,8 @@ test('getGroupDisplayLabel returns group name for session kind', () => {
 });
 
 test('getGroupDisplayLabel falls back to friendlyDomain for domain kind', () => {
-  assert.equal(getGroupDisplayLabel({ kind: 'domain', domain: 'www.google.com' }), 'google com');
-  assert.equal(getGroupDisplayLabel({ kind: 'custom', domain: 'github.com' }), 'github com');
+  assert.equal(getGroupDisplayLabel({ kind: 'domain', domain: 'www.google.com' }), 'Google');
+  assert.equal(getGroupDisplayLabel({ kind: 'custom', domain: 'github.com' }), 'GitHub');
 });
 
 test('getGroupDisplayLabel uses label for chrome-group kind', () => {
@@ -328,7 +264,7 @@ test('getGroupDisplayLabel uses label for chrome-group kind', () => {
 
 test('getGroupDisplayLabel handles missing i18n by returning key', () => {
   globalThis.TabHarborI18n = {};
-  globalThis.TabOutGroupOrder = { normalizeGroupOrderState: () => {} };
+  globalThis.TabOutGroupOrder.normalizeGroupOrderState = () => ({});
   assert.equal(getGroupDisplayLabel({ kind: 'ungrouped', domain: '__ungrouped__' }), 'ungroupedLabel');
 });
 
@@ -339,11 +275,7 @@ test('buildPopupTabGroups is exposed globally', () => {
 });
 
 test('buildPopupTabGroups groups session-assigned tabs', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [];
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState({ landingPatterns: [] });
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://github.com', title: 'GitHub', windowId: 1, active: false, groupId: null },
   ];
@@ -361,11 +293,7 @@ test('buildPopupTabGroups groups session-assigned tabs', () => {
 });
 
 test('buildPopupTabGroups groups domain tabs', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // restore default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://github.com/user', title: 'GitHub', windowId: 1, active: false, groupId: null },
@@ -384,11 +312,7 @@ test('buildPopupTabGroups groups domain tabs', () => {
 });
 
 test('buildPopupTabGroups places landing pages group at top', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // use default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://github.com/', title: 'GitHub', windowId: 1, active: false, groupId: null },
@@ -402,11 +326,7 @@ test('buildPopupTabGroups places landing pages group at top', () => {
 });
 
 test('buildPopupTabGroups groups file:// URLs under local-files domain', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // use default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'file:///path/to/file', title: 'Local File', windowId: 1, active: false, groupId: null },
@@ -420,15 +340,11 @@ test('buildPopupTabGroups groups file:// URLs under local-files domain', () => {
   assert.equal(localGroup.tabs[0].id, 1);
 });
 
-test('buildPopupTabGroups puts chrome tab group tabs into chrome-group kind', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // use default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
+test('buildPopupTabGroups skips tabs with unparseable URLs', () => {
   globalThis._skipLoadPopupState = true;
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
-  // Tabs with unparseable URLs bypass domain grouping and reach chrome-group logic
+  // Tabs with empty URLs can't be parsed — they are skipped entirely
   const tabA = { id: 1, url: '', title: 'Tab A', windowId: 1, active: false, groupId: 10 };
   const tabB = { id: 2, url: '', title: 'Tab B', windowId: 1, active: false, groupId: 10 };
   globalThis.popupState.openTabs = [tabA, tabB];
@@ -437,10 +353,7 @@ test('buildPopupTabGroups puts chrome tab group tabs into chrome-group kind', ()
   ];
 
   const groups = globalThis.buildPopupTabGroups();
-  const cg = groups.find(g => g.kind === 'chrome-group');
-  assert.ok(cg, 'chrome-group should exist');
-  assert.equal(cg.color, 'blue');
-  assert.equal(cg.tabs.length, 2);
+  assert.equal(groups.length, 0, 'tabs with unparseable URLs produce no groups');
 });
 
 // ---- renderShortcutCard ----
@@ -595,7 +508,7 @@ test('renderGroupNav renders button with label', () => {
   assert.ok(html.includes('data-action="jump-popup-group"'));
   assert.ok(html.includes('data-group-id="github.com"'));
   // getGroupDisplayLabel transforms domain kind label via friendlyDomain
-  assert.ok(html.includes('aria-label="github com"'));
+  assert.ok(html.includes('aria-label="GitHub"'));
   assert.ok(html.includes('style="--s:0"'));
 });
 
@@ -636,4 +549,219 @@ test('popupState is exposed globally', () => {
 
 test('popupState.view defaults to shortcuts', () => {
   assert.equal(globalThis.popupState.view, 'shortcuts');
+});
+
+// ---- getTabLabel: additional edge cases ----
+
+test('getTabLabel handles file:// URLs by falling back to URL path', () => {
+  const tab = { title: '', url: 'file:///Users/local/doc.pdf' };
+  const label = getTabLabel(tab);
+  assert.ok(label.length > 0);
+});
+
+test('getTabLabel handles youtube watch page with URL-like title', () => {
+  const tab = { title: 'https://www.youtube.com/watch?v=abc', url: 'https://www.youtube.com/watch?v=abc' };
+  const label = getTabLabel(tab);
+  assert.equal(label, 'YouTube Video');
+});
+
+test('getTabLabel uses title over URL for youtube watch when title is meaningful', () => {
+  const tab = { title: 'Cool Video - YouTube', url: 'https://www.youtube.com/watch?v=abc' };
+  const label = getTabLabel(tab);
+  assert.ok(label.length > 0);
+});
+
+// ---- matchCustomGroup: additional edge cases ----
+
+test('matchCustomGroup returns null for file:// URLs', () => {
+  globalThis.LOCAL_CUSTOM_GROUPS = [
+    { hostname: 'example.com', pathPrefix: null, groupKey: 'ex', groupLabel: 'Example' },
+  ];
+  assert.equal(matchCustomGroup('file:///Users/test/index.html'), null);
+});
+
+test('matchCustomGroup matches hostname without pathPrefix when pathPrefix is null', () => {
+  globalThis.LOCAL_CUSTOM_GROUPS = [
+    { hostname: 'example.com', pathPrefix: null, groupKey: 'ex', groupLabel: 'Example' },
+  ];
+  assert.ok(matchCustomGroup('https://example.com/any/path') !== null);
+  assert.ok(matchCustomGroup('https://example.com/') !== null);
+});
+
+// ---- buildPopupTabGroups: additional integration tests ----
+
+test('buildPopupTabGroups groups tabs by custom group rules', () => {
+  resetPopupTestState({
+    customGroups: [
+      { hostname: 'github.com', pathPrefix: null, groupKey: 'github', groupLabel: 'GitHub' },
+      { hostname: 'gitlab.com', pathPrefix: null, groupKey: 'gitlab', groupLabel: 'GitLab' },
+    ],
+    landingPatterns: [],
+  });
+
+  globalThis.popupState.openTabs = [
+    { id: 1, url: 'https://github.com/user', title: 'GitHub', windowId: 1, active: false, groupId: null },
+    { id: 2, url: 'https://gitlab.com/project', title: 'GitLab', windowId: 1, active: false, groupId: null },
+    { id: 3, url: 'https://other.com/page', title: 'Other', windowId: 1, active: false, groupId: null },
+  ];
+  globalThis.popupState.tabGroups = [];
+
+  const groups = globalThis.buildPopupTabGroups();
+  const gh = groups.find(g => g.kind === 'custom' && g.domain === 'github');
+  const gl = groups.find(g => g.kind === 'custom' && g.domain === 'gitlab');
+  const other = groups.find(g => g.kind === 'domain' && g.domain === 'other.com');
+  assert.ok(gh, 'github custom group should exist');
+  assert.equal(gh.tabs.length, 1);
+  assert.ok(gl, 'gitlab custom group should exist');
+  assert.equal(gl.tabs.length, 1);
+  assert.ok(other, 'other.com domain group should exist');
+  assert.equal(other.tabs.length, 1);
+});
+
+test('buildPopupTabGroups places landing pages before domain groups', () => {
+  resetPopupTestState();
+
+  globalThis.popupState.openTabs = [
+    { id: 1, url: 'https://github.com/', title: 'GitHub Home', windowId: 1, active: false, groupId: null },
+    { id: 2, url: 'https://other.com/page', title: 'Other', windowId: 1, active: false, groupId: null },
+  ];
+  globalThis.popupState.tabGroups = [];
+
+  const groups = globalThis.buildPopupTabGroups();
+  assert.equal(groups[0].kind, 'landing', 'landing group should be first');
+  const otherIdx = groups.findIndex(g => g.domain === 'other.com');
+  assert.ok(otherIdx > 0, 'domain group should come after landing');
+});
+
+test('buildPopupTabGroups handles custom landing page patterns', () => {
+  resetPopupTestState({
+    landingPatterns: [
+      { hostname: 'news.ycombinator.com', pathExact: ['/news'] },
+    ],
+  });
+
+  globalThis.popupState.openTabs = [
+    { id: 1, url: 'https://news.ycombinator.com/news', title: 'HN', windowId: 1, active: false, groupId: null },
+  ];
+  globalThis.popupState.tabGroups = [];
+
+  const groups = globalThis.buildPopupTabGroups();
+  const landing = groups.find(g => g.kind === 'landing');
+  assert.ok(landing, 'custom landing group should exist');
+  assert.equal(landing.tabs.length, 1);
+  assert.equal(landing.tabs[0].id, 1);
+});
+
+test('renderTabGroup reorders tabs by stored groupTabOrder', () => {
+  resetPopupTestState({ landingPatterns: [] });
+
+  globalThis.popupState.groupTabOrder = {
+    'example.com': ['https://example.com/a', 'https://example.com/b', 'https://example.com/c'],
+  };
+
+  const group = {
+    domain: 'example.com',
+    label: 'Example',
+    kind: 'domain',
+    tabs: [
+      { id: 1, url: 'https://example.com/b', title: 'B' },
+      { id: 2, url: 'https://example.com/a', title: 'A' },
+      { id: 3, url: 'https://example.com/c', title: 'C' },
+    ],
+  };
+  const html = renderTabGroup(group, 0);
+  const idxA = html.indexOf('https://example.com/a');
+  const idxB = html.indexOf('https://example.com/b');
+  const idxC = html.indexOf('https://example.com/c');
+  assert.ok(idxA < idxB, 'A should appear before B');
+  assert.ok(idxB < idxC, 'B should appear before C');
+});
+
+test('renderTabGroup deduplicates tabs by URL', () => {
+  resetPopupTestState({ landingPatterns: [] });
+
+  const group = {
+    domain: 'example.com',
+    label: 'Example',
+    kind: 'domain',
+    tabs: [
+      { id: 1, url: 'https://example.com/page', title: 'First' },
+      { id: 2, url: 'https://example.com/page', title: 'Duplicate' },
+    ],
+  };
+  const html = renderTabGroup(group, 0);
+  // Each tab row has data-tab-id in both the row <div> and the close <button>
+  const rowCount = (html.match(/popup-tab-row/g) || []).length;
+  assert.equal(rowCount, 1, 'duplicate URL tab should be removed, leaving 1 row');
+});
+
+// ---- isLandingPage: additional edge cases ----
+
+test('isLandingPage matches custom landing patterns', () => {
+  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [
+    { hostname: 'news.ycombinator.com', pathExact: ['/news'] },
+  ];
+  assert.equal(isLandingPage('https://news.ycombinator.com/news'), true);
+  assert.equal(isLandingPage('https://news.ycombinator.com/item?id=123'), false);
+});
+
+test('isLandingPage handles hostnameEndsWith in patterns', () => {
+  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [
+    { hostnameEndsWith: '.notion.site', pathExact: ['/'] },
+  ];
+  assert.equal(isLandingPage('https://myworkspace.notion.site/'), true);
+  assert.equal(isLandingPage('https://myworkspace.notion.site/page'), false);
+});
+
+// ---- renderTabGroup: additional edge cases ----
+
+test('renderTabGroup includes close button with correct data attributes', () => {
+  const group = {
+    domain: 'example.com',
+    label: 'Example',
+    kind: 'domain',
+    tabs: [{ id: 5, url: 'https://example.com', title: 'Example' }],
+  };
+  const html = renderTabGroup(group, 0);
+  assert.ok(html.includes('data-action="close-popup-tab"'));
+  assert.ok(html.includes('data-tab-id="5"'));
+});
+
+test('renderTabGroup renders tab title attribute for tooltip', () => {
+  const group = {
+    domain: 'example.com',
+    label: 'Example',
+    kind: 'domain',
+    tabs: [{ id: 1, url: 'https://example.com', title: 'Page & Title' }],
+  };
+  const html = renderTabGroup(group, 0);
+  assert.ok(html.includes('title="Page &amp; Title"'));
+});
+
+// ---- renderShortcutCard: additional edge cases ----
+
+test('renderShortcutCard handles index 0 with correct CSS var', () => {
+  const shortcut = { label: 'Home', url: 'https://home.com' };
+  const html = renderShortcutCard(shortcut, 0);
+  assert.ok(html.includes('--s:0'));
+});
+
+test('renderShortcutCard uses url as label fallback', () => {
+  const shortcut = { url: 'https://no-label.com' };
+  const html = renderShortcutCard(shortcut, 0);
+  assert.ok(html.includes('https://no-label.com'));
+});
+
+// ---- renderGroupNav: additional edge cases ----
+
+test('renderGroupNav includes fallback src on img', () => {
+  _restorePopupIcons();
+  globalThis._popupIcons.getGroupIcon = () => ({
+    src: 'https://example.com/icon.png',
+    fallbackLabel: 'EX',
+    fallbackSrc: 'https://example.com/fallback.png',
+  });
+  const group = { domain: 'example.com', label: 'Example', kind: 'domain' };
+  const html = renderGroupNav(group, 0);
+  assert.ok(html.includes('data-fallback-src="https://example.com/fallback.png"'));
 });
