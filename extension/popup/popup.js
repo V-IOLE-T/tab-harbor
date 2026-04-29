@@ -663,6 +663,12 @@ function initializePopup() {
       actionEl.classList.add('is-loading');
       try {
         await chrome.tabs.remove(tabId);
+        // Suppress auto-refresh scheduled by tabs.onRemoved to avoid double render
+        if (popupRefreshTimer) {
+          clearTimeout(popupRefreshTimer);
+          popupRefreshTimer = null;
+        }
+        popupRefreshQueued = false;
         await refreshPopup();
       } finally {
         actionEl.classList.remove('is-loading');
