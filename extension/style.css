@@ -969,14 +969,14 @@ body.theme-tone-dark .deferred-shell {
 .theme-toggle-switch::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 1.5px;
+  left: 1.5px;
   width: 16px;
   height: 16px;
   border-radius: 999px;
   background: var(--card-bg);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 12%, transparent);
-  transition: transform 0.2s ease;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 20%, transparent);
 }
 
 .theme-toggle-switch.is-active {

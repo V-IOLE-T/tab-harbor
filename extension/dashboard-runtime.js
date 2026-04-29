@@ -1441,9 +1441,8 @@ function renderGroupNavArea(groups) {
           </div>
         </div>
         <div class="theme-menu-section">
-          <label class="theme-menu-toggle-label">
-            <input type="checkbox" data-action="toggle-chrome-tab-groups"${chromeTabGroupsEnabled ? ' checked' : ''} aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}">
-            <span class="theme-menu-toggle-slider"></span>
+          <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
+            <button class="theme-toggle-switch ${chromeTabGroupsEnabled ? 'is-active' : ''}" type="button" data-action="toggle-chrome-tab-groups" aria-pressed="${chromeTabGroupsEnabled ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}"></button>
             <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}</span>
           </label>
         </div>
@@ -1823,6 +1822,17 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
     showToast(runtimeT ? runtimeT('toastClosedExtraTabHarborTabs') : 'Closed extra Tab Harbor tabs');
+    return;
+  }
+
+  if (action === 'toggle-chrome-tab-groups') {
+    const nextEnabled = !chromeTabGroupsEnabled;
+    if (typeof setThemeMenuOpen === 'function') setThemeMenuOpen(false);
+    await applyChromeTabGroupsToggle(nextEnabled);
+    const toastMsg = nextEnabled
+      ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on')
+      : (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off');
+    showToast(toastMsg);
     return;
   }
 
@@ -2706,12 +2716,6 @@ document.addEventListener('input', async (e) => {
 });
 
 document.addEventListener('change', async (e) => {
-  if (e.target.matches('input[data-action="toggle-chrome-tab-groups"]')) {
-    if (typeof setThemeMenuOpen === 'function') setThemeMenuOpen(false);
-    await applyChromeTabGroupsToggle(e.target.checked);
-    return;
-  }
-
   if (e.target.id !== 'themeBackgroundInput') return;
 
   const file = e.target.files?.[0];
@@ -2876,21 +2880,21 @@ async function initializeDashboardRuntime() {
  * and refreshes the dashboard to show updated tab list.
  */
 function setupTabChangeListener() {
-  console.log('[tab-harbor] Setting up tab change listener');
+  // console.log('[tab-harbor] Setting up tab change listener');
   
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('[tab-harbor] Received message:', message);
+    // console.log('[tab-harbor] Received message:', message);
     
     if (message.action === 'tabs-changed') {
       // Skip refresh if we just performed a tab action ourselves
       // This prevents animation spam when closing tabs from the dashboard
       if (window.__suppressAutoRefresh) {
-        console.log('[tab-harbor] Auto-refresh suppressed (recent user action)');
+        // console.log('[tab-harbor] Auto-refresh suppressed (recent user action)');
         window.__suppressAutoRefresh = false;
         return;
       }
       
-      console.log('[tab-harbor] Tab changed, scheduling refresh...');
+      // console.log('[tab-harbor] Tab changed, scheduling refresh...');
       
       // Debounce rapid changes (e.g., closing multiple tabs)
       if (window.__tabRefreshTimeout) {
@@ -2899,10 +2903,10 @@ function setupTabChangeListener() {
       
       window.__tabRefreshTimeout = setTimeout(async () => {
         try {
-          console.log('[tab-harbor] Refreshing dashboard...');
+          // console.log('[tab-harbor] Refreshing dashboard...');
           await renderDashboard();
           updateBackToTopVisibility();
-          console.log('[tab-harbor] Dashboard refreshed successfully');
+          // console.log('[tab-harbor] Dashboard refreshed successfully');
         } catch (err) {
           console.warn('[tab-harbor] Failed to refresh dashboard:', err);
         }

@@ -445,6 +445,19 @@ function setDeferredPanelOpen(nextOpen) {
   });
 }
 
+function sanitizeUrl(url) {
+  if (!url) return '';
+  const trimmed = String(url).trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'javascript:' || parsed.protocol === 'data:') return '';
+    return trimmed;
+  } catch {
+    return '';
+  }
+}
+
 function renderDeferredItem(item) {
   const iconData = drawerGetIconSources(item, 16);
   const domain = iconData.hostname.replace(/^www\./, '');
@@ -463,7 +476,7 @@ function renderDeferredItem(item) {
     <div class="deferred-item" data-deferred-id="${item.id}" data-drawer-sort-id="${item.id}" data-drawer-sort-kind="saved">
       <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
       <div class="deferred-info">
-        <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
+        <a href="${sanitizeUrl(item.url)}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
           ${faviconUrl ? `<img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" data-fallback-src="${safeFallbackUrl}">` : ''}
           <span class="inline-favicon-fallback"${faviconUrl ? ' style="display:none"' : ''}>${fallbackLabel}</span>${drawerEscapeHtml ? drawerEscapeHtml(item.title || item.url) : (item.title || item.url)}
         </a>
@@ -489,7 +502,7 @@ function renderArchiveItem(item) {
   return `
     <div class="archive-item">
       <div class="archive-item-main">
-        <a href="${item.url}" target="_blank" rel="noopener" class="archive-item-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
+        <a href="${sanitizeUrl(item.url)}" target="_blank" rel="noopener" class="archive-item-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
           ${drawerEscapeHtml ? drawerEscapeHtml(item.title || item.url) : (item.title || item.url)}
         </a>
         <span class="archive-item-date">${ago}</span>
