@@ -89,14 +89,14 @@ const {
 function resetPopupTestState(opts = {}) {
   globalThis.LOCAL_CUSTOM_GROUPS = opts.customGroups ?? [];
   globalThis.LOCAL_LANDING_PAGE_PATTERNS = opts.landingPatterns ?? undefined;
-  globalThis.TabOutSessionGroups = {
-    normalizeSessionGroups: () => (opts.sessionGroups ?? { groups: [], assignments: {} }),
-  };
-  globalThis.TabOutGroupOrder = {
-    applyGroupOrder: (list) => list,
-    normalizeGroupOrderState: () => (opts.groupOrder ?? { sessionOrder: [], pinnedOrder: [], pinEnabled: false }),
-  };
-  globalThis._resetPopupState();
+  // Mutate existing objects rather than replacing them — popup.js holds
+  // local references captured at module-load time (popupSessionGroups, popupGroupOrder).
+  globalThis.TabOutSessionGroups.normalizeSessionGroups = () => (opts.sessionGroups ?? { groups: [], assignments: {} });
+  globalThis.TabOutGroupOrder.applyGroupOrder = (list) => list;
+  globalThis.TabOutGroupOrder.normalizeGroupOrderState = () => (opts.groupOrder ?? { sessionOrder: [], pinnedOrder: [], pinEnabled: false });
+  if (typeof globalThis._resetPopupState === 'function') {
+    globalThis._resetPopupState();
+  }
 }
 
 // ---- escapeAttr ----
@@ -264,7 +264,7 @@ test('getGroupDisplayLabel uses label for chrome-group kind', () => {
 
 test('getGroupDisplayLabel handles missing i18n by returning key', () => {
   globalThis.TabHarborI18n = {};
-  globalThis.TabOutGroupOrder = { normalizeGroupOrderState: () => {} };
+  globalThis.TabOutGroupOrder.normalizeGroupOrderState = () => ({});
   assert.equal(getGroupDisplayLabel({ kind: 'ungrouped', domain: '__ungrouped__' }), 'ungroupedLabel');
 });
 
@@ -293,11 +293,7 @@ test('buildPopupTabGroups groups session-assigned tabs', () => {
 });
 
 test('buildPopupTabGroups groups domain tabs', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // restore default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://github.com/user', title: 'GitHub', windowId: 1, active: false, groupId: null },
@@ -316,11 +312,7 @@ test('buildPopupTabGroups groups domain tabs', () => {
 });
 
 test('buildPopupTabGroups places landing pages group at top', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // use default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://github.com/', title: 'GitHub', windowId: 1, active: false, groupId: null },
@@ -334,11 +326,7 @@ test('buildPopupTabGroups places landing pages group at top', () => {
 });
 
 test('buildPopupTabGroups groups file:// URLs under local-files domain', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = undefined; // use default landing patterns
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState();
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'file:///path/to/file', title: 'Local File', windowId: 1, active: false, groupId: null },
@@ -603,14 +591,13 @@ test('matchCustomGroup matches hostname without pathPrefix when pathPrefix is nu
 // ---- buildPopupTabGroups: additional integration tests ----
 
 test('buildPopupTabGroups groups tabs by custom group rules', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [
-    { hostname: 'github.com', pathPrefix: null, groupKey: 'github', groupLabel: 'GitHub' },
-    { hostname: 'gitlab.com', pathPrefix: null, groupKey: 'gitlab', groupLabel: 'GitLab' },
-  ];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [];
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState({
+    customGroups: [
+      { hostname: 'github.com', pathPrefix: null, groupKey: 'github', groupLabel: 'GitHub' },
+      { hostname: 'gitlab.com', pathPrefix: null, groupKey: 'gitlab', groupLabel: 'GitLab' },
+    ],
+    landingPatterns: [],
+  });
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://github.com/user', title: 'GitHub', windowId: 1, active: false, groupId: null },
@@ -647,13 +634,11 @@ test('buildPopupTabGroups places landing pages before domain groups', () => {
 });
 
 test('buildPopupTabGroups handles custom landing page patterns', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [
-    { hostname: 'news.ycombinator.com', pathExact: ['/news'] },
-  ];
-  globalThis.TabOutSessionGroups = { normalizeSessionGroups: () => ({ groups: [], assignments: {} }) };
-  globalThis.TabOutGroupOrder = { applyGroupOrder: (list) => list, normalizeGroupOrderState: () => ({ sessionOrder: [], pinnedOrder: [], pinEnabled: false }) };
-  globalThis._resetPopupState();
+  resetPopupTestState({
+    landingPatterns: [
+      { hostname: 'news.ycombinator.com', pathExact: ['/news'] },
+    ],
+  });
 
   globalThis.popupState.openTabs = [
     { id: 1, url: 'https://news.ycombinator.com/news', title: 'HN', windowId: 1, active: false, groupId: null },

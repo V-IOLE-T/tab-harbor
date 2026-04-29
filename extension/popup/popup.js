@@ -669,6 +669,10 @@ function initializePopup() {
           popupRefreshTimer = null;
         }
         popupRefreshQueued = false;
+        // Wait for any already-running refresh to settle before re-rendering
+        if (popupRefreshInFlight) {
+          try { await popupRefreshInFlight; } catch { /* swallow */ }
+        }
         await refreshPopup();
       } finally {
         actionEl.classList.remove('is-loading');

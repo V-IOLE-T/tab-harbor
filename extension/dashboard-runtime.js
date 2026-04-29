@@ -465,7 +465,13 @@ async function applyChromeTabGroupsToggle(nextEnabled) {
 
   ensureChromeTabGroupsSubscription();
   if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+  window.__suppressAutoRefreshUntil = Date.now() + 2000;
   await renderDashboard();
+  if (window.__tabRefreshTimeout) {
+    clearTimeout(window.__tabRefreshTimeout);
+    window.__tabRefreshTimeout = null;
+  }
+  window.__suppressAutoRefreshUntil = 0;
   showToast(enable
     ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on')
     : (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off'));
@@ -1809,10 +1815,15 @@ document.addEventListener('click', async (e) => {
   // ---- Close duplicate Tab Harbor tabs ----
   if (action === 'close-tabout-dupes') {
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
-    
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
+
     await closeTabOutDupes();
     await renderDashboard();
+    if (window.__tabRefreshTimeout) {
+      clearTimeout(window.__tabRefreshTimeout);
+      window.__tabRefreshTimeout = null;
+    }
+    window.__suppressAutoRefreshUntil = 0;
     updateBackToTopVisibility();
     playCloseSound();
     const banner = document.getElementById('tabOutDupeBanner');
@@ -1829,10 +1840,6 @@ document.addEventListener('click', async (e) => {
     const nextEnabled = !chromeTabGroupsEnabled;
     if (typeof setThemeMenuOpen === 'function') setThemeMenuOpen(false);
     await applyChromeTabGroupsToggle(nextEnabled);
-    const toastMsg = nextEnabled
-      ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on')
-      : (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off');
-    showToast(toastMsg);
     return;
   }
 
@@ -1994,7 +2001,7 @@ document.addEventListener('click', async (e) => {
     if (!tabUrl) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     // Close the tab in Chrome directly
     const allTabs = await chrome.tabs.query({});
@@ -2062,7 +2069,7 @@ document.addEventListener('click', async (e) => {
     if (!tabUrl) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     // Save to chrome.storage.local
     try {
@@ -2185,7 +2192,7 @@ document.addEventListener('click', async (e) => {
     if (!group) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     const urls      = group.tabs.map(t => t.url);
     // Landing pages and custom groups (whose domain key isn't a real hostname)
@@ -2229,7 +2236,7 @@ document.addEventListener('click', async (e) => {
     if (urls.length === 0) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     await closeDuplicateTabs(urls, true);
     playCloseSound();
@@ -2264,7 +2271,7 @@ document.addEventListener('click', async (e) => {
   // ---- Close ALL open tabs ----
   if (action === 'close-all-open-tabs') {
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
     
     const allUrls = openTabs
       .filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:'))
@@ -2888,9 +2895,7 @@ function setupTabChangeListener() {
     if (message.action === 'tabs-changed') {
       // Skip refresh if we just performed a tab action ourselves
       // This prevents animation spam when closing tabs from the dashboard
-      if (window.__suppressAutoRefresh) {
-        // console.log('[tab-harbor] Auto-refresh suppressed (recent user action)');
-        window.__suppressAutoRefresh = false;
+      if (Date.now() < (window.__suppressAutoRefreshUntil || 0)) {
         return;
       }
       

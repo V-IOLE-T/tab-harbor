@@ -354,7 +354,7 @@ function friendlyDomain(hostname) {
 
   const clean = hostname
     .replace(/^www\./, '')
-    .replace(/\.(com|org|net|io|co|ai|dev|app|so|me|xyz|info|us|uk|co\.uk|co\.jp)$/, '');
+    .replace(/\.(co\.uk|co\.jp|com|org|net|io|co|ai|dev|app|so|me|xyz|info|us|uk)$/, '');
 
   return clean.split('.').map(part => capitalize(part)).join(' ');
 }
