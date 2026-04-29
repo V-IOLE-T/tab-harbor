@@ -131,6 +131,7 @@ function animateCardOut(card) {
 function showToast(message, { action } = {}) {
   const toast = document.getElementById('toast');
   const toastText = document.getElementById('toastText');
+  if (!toast || !toastText) return;
   const toastAction = document.getElementById('toastAction');
 
   toastText.textContent = message;

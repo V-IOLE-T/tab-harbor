@@ -1377,7 +1377,7 @@ function renderGroupNav(group) {
       data-group-id="${group.domain}"
       data-domain-id="${stableId}"
       data-tooltip="${safeTooltip}"
-      aria-label="${runtimeT ? runtimeT('jumpToLabel', { label }) : `Jump to ${label}` }"
+      aria-label="${runtimeT ? runtimeT('jumpToLabel', { label: safeTooltip }) : `Jump to ${safeTooltip}` }"
       draggable="false"
     >
       ${iconData.src

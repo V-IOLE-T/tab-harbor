@@ -201,9 +201,11 @@ test('isLandingPage handles invalid URLs gracefully', () => {
 // ---- matchCustomGroup ----
 
 test('matchCustomGroup matches exact hostname and returns the rule object', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [
-    { hostname: 'github.com', pathPrefix: null, groupKey: 'gh', groupLabel: 'GitHub' },
-  ];
+  resetPopupTestState({
+    customGroups: [
+      { hostname: 'github.com', pathPrefix: null, groupKey: 'gh', groupLabel: 'GitHub' },
+    ],
+  });
   const result = matchCustomGroup('https://github.com/user');
   assert.equal(typeof result, 'object', 'should return rule object');
   assert.equal(result.hostname, 'github.com');
@@ -213,17 +215,21 @@ test('matchCustomGroup matches exact hostname and returns the rule object', () =
 });
 
 test('matchCustomGroup matches hostnameEndsWith', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [
-    { hostname: null, hostnameEndsWith: '.notion.site', pathPrefix: null, groupKey: 'notion', groupLabel: 'Notion' },
-  ];
+  resetPopupTestState({
+    customGroups: [
+      { hostname: null, hostnameEndsWith: '.notion.site', pathPrefix: null, groupKey: 'notion', groupLabel: 'Notion' },
+    ],
+  });
   assert.ok(matchCustomGroup('https://myworkspace.notion.site/') !== null, 'should match .notion.site');
   assert.ok(matchCustomGroup('https://github.com/') === null, 'should not match github.com');
 });
 
 test('matchCustomGroup matches pathPrefix when specified', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [
-    { hostname: 'github.com', pathPrefix: '/orgs/', groupKey: 'gh-org', groupLabel: 'GitHub Orgs' },
-  ];
+  resetPopupTestState({
+    customGroups: [
+      { hostname: 'github.com', pathPrefix: '/orgs/', groupKey: 'gh-org', groupLabel: 'GitHub Orgs' },
+    ],
+  });
   const result = matchCustomGroup('https://github.com/orgs/team');
   assert.ok(result !== null, 'should match /orgs/ path');
   assert.equal(result.hostname, 'github.com');
@@ -231,12 +237,12 @@ test('matchCustomGroup matches pathPrefix when specified', () => {
 });
 
 test('matchCustomGroup returns null for empty groups', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
+  resetPopupTestState();
   assert.equal(matchCustomGroup('https://github.com/'), null);
 });
 
 test('matchCustomGroup handles invalid URLs gracefully', () => {
-  globalThis.LOCAL_CUSTOM_GROUPS = [];
+  resetPopupTestState();
   assert.equal(matchCustomGroup(''), null);
   assert.equal(matchCustomGroup('://invalid'), null);
 });
@@ -698,17 +704,21 @@ test('renderTabGroup deduplicates tabs by URL', () => {
 // ---- isLandingPage: additional edge cases ----
 
 test('isLandingPage matches custom landing patterns', () => {
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [
-    { hostname: 'news.ycombinator.com', pathExact: ['/news'] },
-  ];
+  resetPopupTestState({
+    landingPatterns: [
+      { hostname: 'news.ycombinator.com', pathExact: ['/news'] },
+    ],
+  });
   assert.equal(isLandingPage('https://news.ycombinator.com/news'), true);
   assert.equal(isLandingPage('https://news.ycombinator.com/item?id=123'), false);
 });
 
 test('isLandingPage handles hostnameEndsWith in patterns', () => {
-  globalThis.LOCAL_LANDING_PAGE_PATTERNS = [
-    { hostnameEndsWith: '.notion.site', pathExact: ['/'] },
-  ];
+  resetPopupTestState({
+    landingPatterns: [
+      { hostnameEndsWith: '.notion.site', pathExact: ['/'] },
+    ],
+  });
   assert.equal(isLandingPage('https://myworkspace.notion.site/'), true);
   assert.equal(isLandingPage('https://myworkspace.notion.site/page'), false);
 });
