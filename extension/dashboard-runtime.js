@@ -417,6 +417,8 @@ async function importChromeNativeGroupsIntoSessionGroups() {
 
 function scheduleChromeTabGroupsImport() {
   if (!chromeTabGroupsEnabled) return;
+  
+  if (typeof window.__suppressAutoRefresh === 'number' && window.__suppressAutoRefresh > Date.now()) return;
   if (chromeTabGroupsImportTimer) clearTimeout(chromeTabGroupsImportTimer);
   chromeTabGroupsImportTimer = setTimeout(async () => {
     chromeTabGroupsImportTimer = null;
@@ -1989,12 +1991,12 @@ document.addEventListener('click', async (e) => {
 
   // ---- Close a single tab ----
   if (action === 'close-single-tab') {
-    e.stopPropagation(); // don't trigger parent chip's focus-tab
+    e.stopPropagation();
     const tabUrl = actionEl.dataset.tabUrl;
     if (!tabUrl) return;
 
-    // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    // 阻止自动刷新1.5s
+    window.__suppressAutoRefresh = Date.now() + 1500;
 
     // Close the tab in Chrome directly
     const allTabs = await chrome.tabs.query({});
@@ -2061,8 +2063,8 @@ document.addEventListener('click', async (e) => {
     const tabTitle = actionEl.dataset.tabTitle || tabUrl;
     if (!tabUrl) return;
 
-    // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    // 阻止自动刷新1.5s
+    window.__suppressAutoRefresh = Date.now() + 1500;
 
     // Save to chrome.storage.local
     try {
@@ -2889,7 +2891,9 @@ function setupTabChangeListener() {
       // Skip refresh if we just performed a tab action ourselves
       // This prevents animation spam when closing tabs from the dashboard
       if (window.__suppressAutoRefresh) {
-        // console.log('[tab-harbor] Auto-refresh suppressed (recent user action)');
+        if (typeof window.__suppressAutoRefresh === 'number' && window.__suppressAutoRefresh > Date.now()) {
+          return;
+        }
         window.__suppressAutoRefresh = false;
         return;
       }
