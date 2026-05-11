@@ -1166,20 +1166,9 @@ async function focusTab(url) {
 
 async function navigateCurrentTabToUrl(url) {
   if (!url) return false;
-
-  const currentTab = await chrome.tabs.getCurrent();
-  if (currentTab?.id) {
-    await chrome.tabs.update(currentTab.id, { url, active: true });
-    return true;
-  }
-
-  const [activeTab] = await chrome.tabs.query({
-    active: true,
-    currentWindow: true,
-  });
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!activeTab?.id) return false;
-
-  await chrome.tabs.update(activeTab.id, { url, active: true });
+  await chrome.tabs.update(activeTab.id, { url });
   return true;
 }
 
