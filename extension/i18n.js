@@ -383,19 +383,34 @@
     if (!(el instanceof HTMLElement)) return;
 
     if (el.dataset.i18n) {
-      el.textContent = i18nT(el.dataset.i18n);
+      const translated = i18nT(el.dataset.i18n);
+      if (el.textContent !== translated) {
+        el.textContent = translated;
+      }
     }
     if (el.dataset.i18nPlaceholder) {
-      el.setAttribute('placeholder', i18nT(el.dataset.i18nPlaceholder));
+      const translated = i18nT(el.dataset.i18nPlaceholder);
+      if (el.getAttribute('placeholder') !== translated) {
+        el.setAttribute('placeholder', translated);
+      }
     }
     if (el.dataset.i18nAriaLabel) {
-      el.setAttribute('aria-label', i18nT(el.dataset.i18nAriaLabel));
+      const translated = i18nT(el.dataset.i18nAriaLabel);
+      if (el.getAttribute('aria-label') !== translated) {
+        el.setAttribute('aria-label', translated);
+      }
     }
     if (el.dataset.i18nTitle) {
-      el.setAttribute('title', i18nT(el.dataset.i18nTitle));
+      const translated = i18nT(el.dataset.i18nTitle);
+      if (el.getAttribute('title') !== translated) {
+        el.setAttribute('title', translated);
+      }
     }
     if (el.dataset.i18nTooltip) {
-      el.setAttribute('data-tooltip', i18nT(el.dataset.i18nTooltip));
+      const translated = i18nT(el.dataset.i18nTooltip);
+      if (el.getAttribute('data-tooltip') !== translated) {
+        el.setAttribute('data-tooltip', translated);
+      }
     }
 
     const attrNames = ['aria-label', 'title', 'placeholder', 'data-tooltip'];

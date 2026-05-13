@@ -2053,5 +2053,4 @@ globalThis.TabOutThemeControls = {
   saveQuickShortcutOrder,
   saveQuickShortcuts,
   syncPopupTheme,
-  normalizeThemePreferences,
 };

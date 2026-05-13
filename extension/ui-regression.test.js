@@ -110,8 +110,8 @@ test('popup follows dashboard tab-order storage and richer title shaping', () =>
   assert.match(popupJs, /const GROUP_TAB_ORDER_KEY = 'groupTabOrder'/);
   assert.match(popupJs, /popupState\.groupTabOrder/);
   assert.match(popupJs, /function getOrderedUniqueTabsForGroup\(group\)/);
-  assert.match(popupJs, /function smartTitle\(title, url\)/);
-  assert.match(popupJs, /function cleanTitle\(title, hostname\)/);
+  // smartTitle and cleanTitle are now shared via ui-helpers.js
+  assert.match(popupHtml, /<script src="\.\.\/ui-helpers\.js"><\/script>/);
 });
 
 test('manifest action keeps the popup entry wired to popup html', () => {
