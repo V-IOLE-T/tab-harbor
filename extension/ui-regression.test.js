@@ -7,6 +7,7 @@ const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const appEntryJs = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const backgroundJs = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+const chromeImportJs = fs.readFileSync(path.join(__dirname, 'chrome-tab-groups-import.js'), 'utf8');
 const runtimeJs = fs.readFileSync(path.join(__dirname, 'dashboard-runtime.js'), 'utf8');
 const themeJs = fs.readFileSync(path.join(__dirname, 'theme-controls.js'), 'utf8');
 const drawerJs = fs.readFileSync(path.join(__dirname, 'drawer-manager.js'), 'utf8');
@@ -96,8 +97,8 @@ test('popup follows dashboard tab-order storage and richer title shaping', () =>
   assert.match(popupJs, /const GROUP_TAB_ORDER_KEY = 'groupTabOrder'/);
   assert.match(popupJs, /popupState\.groupTabOrder/);
   assert.match(popupJs, /function getOrderedUniqueTabsForGroup\(group\)/);
-  assert.match(popupJs, /function smartTitle\(title, url\)/);
-  assert.match(popupJs, /function cleanTitle\(title, hostname\)/);
+  // smartTitle and cleanTitle are now shared via ui-helpers.js
+  assert.match(popupHtml, /<script src="\.\.\/ui-helpers\.js"><\/script>/);
 });
 
 test('manifest action keeps the popup entry wired to popup html', () => {
@@ -211,11 +212,11 @@ test('group drag commit reorders cards in place instead of refreshing the whole 
   assert.match(appJs, /function buildPersistentGroupOrderWithInsertedGroup\(insertedGroupKey,/);
   assert.match(appJs, /function buildPersistentGroupOrderReplacingKey\(replacementGroupKey, replacedGroupKey\)/);
   assert.match(appJs, /async function persistGroupOrder\(orderKeys = \[\]\)/);
-  assert.match(appJs, /function fallbackFindReusableSessionGroupId\(groups, assignments, managedIds, nativeGroup\)/);
-  assert.match(appJs, /sessionGroupId = fallbackFindReusableSessionGroupId\(groups, assignments, managedIds, nativeGroup\);/);
+  assert.match(chromeImportJs, /function findReusableSessionGroupId\(groups, assignments, nativeGroup\)/);
+  assert.match(chromeImportJs, /sessionGroupId = findReusableSessionGroupId\(groups, normalizedState\.assignments, nativeGroup\);/);
   assert.match(appJs, /function disableChromeTabGroupsImportModeForLocalEdits\(\)/);
   assert.match(appJs, /function shouldImportChromeGroupsIntoSessionState\(\)/);
-  assert.match(appJs, /setImportMode\(importedCount > 0\);\s*disableChromeTabGroupsImportModeForLocalEdits\(\);\s*await renderDashboard\(\);/);
+  assert.match(appJs, /setImportMode\(importedCount > 0\);\s*disableChromeTabGroupsImportModeForLocalEdits\(\);\s*window\.__suppressAutoRefreshUntil = Date\.now\(\) \+ 2000;\s*await renderDashboard\(\);/);
   assert.match(appJs, /if \(!shouldImportChromeGroupsIntoSessionState\(\)\) \{[\s\S]*disableChromeTabGroupsImportModeForLocalEdits\(\);[\s\S]*return;/);
   assert.match(appJs, /if \(enable && shouldImportChromeGroupsIntoSessionState\(\)\) \{/);
   assert.match(appJs, /else if \(!enable && typeof reconcileChromeTabGroupImports === 'function'\) \{/);
@@ -778,7 +779,7 @@ test('dashboard auto-refreshes when tabs change via background message', () => {
 test('closing duplicate Tab Harbor tabs rerenders without dropping chrome tab group mode', () => {
   assert.match(
     runtimeJs,
-    /if \(action === 'close-tabout-dupes'\) \{[\s\S]*__suppressAutoRefresh = true;[\s\S]*await closeTabOutDupes\(\);[\s\S]*await renderDashboard\(\);[\s\S]*updateBackToTopVisibility\(\);/
+    /if \(action === 'close-tabout-dupes'\) \{[\s\S]*window\.__suppressAutoRefreshUntil = Date\.now\(\) \+ 2000;[\s\S]*await closeTabOutDupes\(\);[\s\S]*await renderDashboard\(\);[\s\S]*window\.__suppressAutoRefreshUntil = 0;[\s\S]*updateBackToTopVisibility\(\);/
   );
 });
 
@@ -804,7 +805,7 @@ test('chrome tab group mode stays active while the toggle is on', () => {
 test('theme menu keeps chrome tab groups above hitokoto and uses left-aligned toggles', () => {
   assert.match(
     runtimeJs,
-    /<label class="theme-menu-toggle-label">[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*theme-menu-toggle-slider[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*Chrome tab groups[\s\S]*<\/label>[\s\S]*<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*class="theme-toggle-switch[\s\S]*data-action="toggle-hitokoto"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*一言/
+    /<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*Chrome tab groups[\s\S]*<\/label>[\s\S]*<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*data-action="toggle-hitokoto"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*一言/
   );
 
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');

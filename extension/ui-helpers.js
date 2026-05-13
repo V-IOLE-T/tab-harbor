@@ -131,6 +131,7 @@ function animateCardOut(card) {
 function showToast(message, { action } = {}) {
   const toast = document.getElementById('toast');
   const toastText = document.getElementById('toastText');
+  if (!toast || !toastText) return;
   const toastAction = document.getElementById('toastAction');
   if (!toast || !toastText) return;
 
@@ -355,7 +356,7 @@ function friendlyDomain(hostname) {
 
   const clean = hostname
     .replace(/^www\./, '')
-    .replace(/\.(com|org|net|io|co|ai|dev|app|so|me|xyz|info|us|uk|co\.uk|co\.jp)$/, '');
+    .replace(/\.(co\.uk|co\.jp|com|org|net|io|co|ai|dev|app|so|me|xyz|info|us|uk)$/, '');
 
   return clean.split('.').map(part => capitalize(part)).join(' ');
 }
@@ -446,6 +447,13 @@ function smartTitle(title, url) {
 
   return title || url;
 }
+
+// Test exposure
+globalThis.friendlyDomain = friendlyDomain;
+globalThis.stripTitleNoise = stripTitleNoise;
+globalThis.cleanTitle = cleanTitle;
+globalThis.smartTitle = smartTitle;
+globalThis.capitalize = capitalize;
 
 const ICONS = {
   tabs: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8.25V18a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21 18V8.25m-18 0V6a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 6v2.25m-18 0h18" /></svg>`,

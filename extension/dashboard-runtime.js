@@ -65,183 +65,11 @@ const {
   setImageFallbackAttributes: runtimeSetImageFallbackAttributes,
 } = globalThis;
 
-function fallbackNormalizeChromeImportedGroupMeta(input) {
-  const entries = Array.isArray(input?.entries)
-    ? input.entries
-      .filter(entry => entry && entry.sessionGroupId)
-      .map(entry => ({
-        sessionGroupId: String(entry.sessionGroupId),
-        chromeGroupId: entry.chromeGroupId == null ? null : Number(entry.chromeGroupId),
-        windowId: entry.windowId == null ? 0 : Number(entry.windowId),
-        title: String(entry.title || 'Group').trim() || 'Group',
-        color: String(entry.color || 'grey'),
-      }))
-    : [];
-
-  return { entries };
-}
-
-function fallbackBuildChromeImportSignature(entry) {
-  return [
-    String(entry.windowId ?? 0),
-    String(entry.title || 'Group').trim() || 'Group',
-    String(entry.color || 'grey'),
-  ].join('::');
-}
-
-function fallbackBuildChromeImportName(baseName, groups, excludeGroupId = '') {
-  const fallbackName = String(baseName || 'Group').trim() || 'Group';
-  const takenNames = new Set(
-    (groups || [])
-      .filter(group => group && group.id !== excludeGroupId)
-      .map(group => String(group.name || '').trim().toLowerCase())
-      .filter(Boolean)
-  );
-  if (!takenNames.has(fallbackName.toLowerCase())) return fallbackName;
-
-  let suffix = 2;
-  while (takenNames.has(`${fallbackName.toLowerCase()} ${suffix}`)) suffix++;
-  return `${fallbackName} ${suffix}`;
-}
-
-function fallbackFindReusableSessionGroupId(groups, assignments, managedIds, nativeGroup) {
-  const nativeTabIds = Array.isArray(nativeGroup?.tabIds)
-    ? nativeGroup.tabIds.map(tabId => String(tabId)).filter(Boolean).sort()
-    : [];
-  if (!nativeTabIds.length) return '';
-
-  const nativeTitle = String(nativeGroup?.title || '').trim().toLowerCase();
-
-  for (const group of groups || []) {
-    const groupId = String(group?.id || '');
-    if (!groupId || managedIds.has(groupId)) continue;
-
-    const assignedTabIds = Object.entries(assignments || {})
-      .filter(([, assignedGroupId]) => String(assignedGroupId) === groupId)
-      .map(([tabId]) => String(tabId))
-      .sort();
-    if (!assignedTabIds.length || assignedTabIds.length !== nativeTabIds.length) continue;
-    if (!assignedTabIds.every((tabId, index) => tabId === nativeTabIds[index])) continue;
-
-    const groupName = String(group?.name || '').trim().toLowerCase();
-    if (!nativeTitle || !groupName || nativeTitle === groupName) {
-      return groupId;
-    }
-  }
-
-  return '';
-}
-
-function fallbackReconcileChromeTabGroupImports({
-  currentState,
-  importedMeta,
-  nativeGroups,
-}) {
-  const normalizedState = normalizeSessionGroups(currentState);
-  const normalizedMeta = fallbackNormalizeChromeImportedGroupMeta(importedMeta);
-  const managedIds = new Set(normalizedMeta.entries.map(entry => entry.sessionGroupId));
-  const sessionGroupIds = new Set(normalizedState.groups.map(group => group.id));
-
-  let groups = normalizedState.groups.slice();
-  let assignments = {};
-  for (const [tabId, groupId] of Object.entries(normalizedState.assignments)) {
-    if (managedIds.has(groupId)) continue;
-    assignments[tabId] = groupId;
-  }
-
-  const metaByChromeGroupId = new Map();
-  const metaBySignature = new Map();
-  for (const entry of normalizedMeta.entries) {
-    if (!sessionGroupIds.has(entry.sessionGroupId)) continue;
-    if (entry.chromeGroupId != null) metaByChromeGroupId.set(entry.chromeGroupId, entry);
-    metaBySignature.set(fallbackBuildChromeImportSignature(entry), entry);
-  }
-
-  const nextMetaEntries = [];
-  const mappings = [];
-
-  for (const nativeGroup of (nativeGroups || [])) {
-    const chromeGroupId = nativeGroup?.chromeGroupId == null ? null : Number(nativeGroup.chromeGroupId);
-    const windowId = nativeGroup?.windowId == null ? 0 : Number(nativeGroup.windowId);
-    const title = String(nativeGroup?.title || 'Group').trim() || 'Group';
-    const color = String(nativeGroup?.color || 'grey');
-    const tabIds = Array.isArray(nativeGroup?.tabIds)
-      ? nativeGroup.tabIds.filter(tabId => tabId != null).map(tabId => String(tabId))
-      : [];
-    if (!tabIds.length) continue;
-
-    const signature = fallbackBuildChromeImportSignature({ windowId, title, color });
-    const existingMeta = (chromeGroupId != null && metaByChromeGroupId.get(chromeGroupId))
-      || metaBySignature.get(signature)
-      || null;
-
-    let sessionGroupId = existingMeta?.sessionGroupId || '';
-    let groupIndex = groups.findIndex(group => group.id === sessionGroupId);
-    if (groupIndex === -1) {
-      sessionGroupId = fallbackFindReusableSessionGroupId(groups, assignments, managedIds, nativeGroup);
-      groupIndex = groups.findIndex(group => group.id === sessionGroupId);
-    }
-
-    if (groupIndex === -1) {
-      const created = addSessionGroup({ groups, assignments }, fallbackBuildChromeImportName(title, groups));
-      groups = created.state.groups;
-      assignments = created.state.assignments;
-      sessionGroupId = created.group.id;
-      groupIndex = groups.findIndex(group => group.id === sessionGroupId);
-    } else {
-      const nextName = fallbackBuildChromeImportName(title, groups, sessionGroupId);
-      if (groups[groupIndex].name !== nextName) {
-        groups = groups.map(group => group.id === sessionGroupId
-          ? { ...group, name: nextName }
-          : group);
-      }
-    }
-
-    for (const tabId of tabIds) {
-      assignments[tabId] = sessionGroupId;
-    }
-
-    if (chromeGroupId != null) {
-      mappings.push({
-        virtualGroupKey: `__session_group__:${sessionGroupId}`,
-        windowId,
-        chromeGroupId,
-      });
-    }
-
-    nextMetaEntries.push({
-      sessionGroupId,
-      chromeGroupId,
-      windowId,
-      title,
-      color,
-    });
-  }
-
-  const activeManagedIds = new Set(nextMetaEntries.map(entry => entry.sessionGroupId));
-  groups = groups.filter(group => !managedIds.has(group.id) || activeManagedIds.has(group.id));
-  assignments = Object.fromEntries(
-    Object.entries(assignments).filter(([, groupId]) => !managedIds.has(groupId) || activeManagedIds.has(groupId))
-  );
-
-  return {
-    state: normalizeSessionGroups({ groups, assignments }),
-    importedMeta: fallbackNormalizeChromeImportedGroupMeta({ entries: nextMetaEntries }),
-    mappings,
-  };
-}
-
-const runtimeChromeImportApi = globalThis.TabOutChromeTabGroupImport || {
-  EMPTY_META: { entries: [] },
-  normalizeChromeImportedGroupMeta: fallbackNormalizeChromeImportedGroupMeta,
-  reconcileChromeTabGroupImports: fallbackReconcileChromeTabGroupImports,
-};
-
 const {
-  EMPTY_META: runtimeEmptyChromeImportedMeta,
+  EMPTY_META: runtimeEmptyChromeImportedMeta = { entries: [] },
   normalizeChromeImportedGroupMeta,
   reconcileChromeTabGroupImports,
-} = runtimeChromeImportApi;
+} = globalThis.TabOutChromeTabGroupImport || {};
 
 const {
   reorderSubsetByIds,
@@ -972,7 +800,13 @@ function scheduleChromeTabGroupsImport() {
       const importedCount = await importChromeNativeGroupsIntoSessionGroups();
       if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
       disableChromeTabGroupsImportModeForLocalEdits();
+      window.__suppressAutoRefreshUntil = Date.now() + 2000;
       await renderDashboard();
+      if (window.__tabRefreshTimeout) {
+        clearTimeout(window.__tabRefreshTimeout);
+        window.__tabRefreshTimeout = null;
+      }
+      window.__suppressAutoRefreshUntil = 0;
     } finally {
       chromeTabGroupsImportInFlight = false;
     }
@@ -1005,7 +839,13 @@ async function applyChromeTabGroupsToggle(nextEnabled) {
   ensureChromeTabGroupsSubscription();
   if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
   disableChromeTabGroupsImportModeForLocalEdits();
+  window.__suppressAutoRefreshUntil = Date.now() + 2000;
   await renderDashboard();
+  if (window.__tabRefreshTimeout) {
+    clearTimeout(window.__tabRefreshTimeout);
+    window.__tabRefreshTimeout = null;
+  }
+  window.__suppressAutoRefreshUntil = 0;
   showToast(enable
     ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on')
     : (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off'));
@@ -2271,7 +2111,7 @@ function renderGroupNav(group) {
       data-group-id="${group.domain}"
       data-domain-id="${stableId}"
       data-tooltip="${safeTooltip}"
-      aria-label="${runtimeT ? runtimeT('jumpToLabel', { label }) : `Jump to ${label}` }"
+      aria-label="${runtimeT ? runtimeT('jumpToLabel', { label: safeTooltip }) : `Jump to ${safeTooltip}` }"
       draggable="false"
     >
       ${iconData.src
@@ -2341,9 +2181,8 @@ function renderGroupNavArea(groups) {
           </div>
         </div>
         <div class="theme-menu-section">
-          <label class="theme-menu-toggle-label">
-            <input type="checkbox" data-action="toggle-chrome-tab-groups"${chromeTabGroupsEnabled ? ' checked' : ''} aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}">
-            <span class="theme-menu-toggle-slider"></span>
+          <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
+            <button class="theme-toggle-switch ${chromeTabGroupsEnabled ? 'is-active' : ''}" type="button" data-action="toggle-chrome-tab-groups" aria-pressed="${chromeTabGroupsEnabled ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}"></button>
             <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}</span>
           </label>
         </div>
@@ -2846,10 +2685,15 @@ document.addEventListener('click', async (e) => {
   // ---- Close duplicate Tab Harbor tabs ----
   if (action === 'close-tabout-dupes') {
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
-    
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
+
     await closeTabOutDupes();
     await renderDashboard();
+    if (window.__tabRefreshTimeout) {
+      clearTimeout(window.__tabRefreshTimeout);
+      window.__tabRefreshTimeout = null;
+    }
+    window.__suppressAutoRefreshUntil = 0;
     updateBackToTopVisibility();
     playCloseSound();
     const banner = document.getElementById('tabOutDupeBanner');
@@ -2859,6 +2703,13 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
     showToast(runtimeT ? runtimeT('toastClosedExtraTabHarborTabs') : 'Closed extra Tab Harbor tabs');
+    return;
+  }
+
+  if (action === 'toggle-chrome-tab-groups') {
+    const nextEnabled = !chromeTabGroupsEnabled;
+    if (typeof setThemeMenuOpen === 'function') setThemeMenuOpen(false);
+    await applyChromeTabGroupsToggle(nextEnabled);
     return;
   }
 
@@ -2948,7 +2799,7 @@ document.addEventListener('click', async (e) => {
     if (!tabUrl) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     // Close the tab in Chrome directly
     const allTabs = await chrome.tabs.query({});
@@ -3016,7 +2867,7 @@ document.addEventListener('click', async (e) => {
     if (!tabUrl) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     // Save to chrome.storage.local
     try {
@@ -3097,7 +2948,13 @@ document.addEventListener('click', async (e) => {
     if (!restored?.url) return;
 
     await reopenSavedTab(restored.url);
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
     await renderDashboard();
+    if (window.__tabRefreshTimeout) {
+      clearTimeout(window.__tabRefreshTimeout);
+      window.__tabRefreshTimeout = null;
+    }
+    window.__suppressAutoRefreshUntil = 0;
 
     const item = actionEl.closest('.deferred-item');
     if (item) {
@@ -3139,7 +2996,7 @@ document.addEventListener('click', async (e) => {
     if (!group) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     const urls      = group.tabs.map(t => t.url);
     // Landing pages and custom groups (whose domain key isn't a real hostname)
@@ -3183,7 +3040,7 @@ document.addEventListener('click', async (e) => {
     if (urls.length === 0) return;
 
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
 
     await closeDuplicateTabs(urls, true);
     playCloseSound();
@@ -3216,7 +3073,7 @@ document.addEventListener('click', async (e) => {
   // ---- Close ALL open tabs ----
   if (action === 'close-all-open-tabs') {
     // Suppress auto-refresh to prevent animation spam
-    window.__suppressAutoRefresh = true;
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
     
     const allUrls = openTabs
       .filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:'))
@@ -3730,12 +3587,6 @@ document.addEventListener('input', async (e) => {
 });
 
 document.addEventListener('change', async (e) => {
-  if (e.target.matches('input[data-action="toggle-chrome-tab-groups"]')) {
-    if (typeof setThemeMenuOpen === 'function') setThemeMenuOpen(false);
-    await applyChromeTabGroupsToggle(e.target.checked);
-    return;
-  }
-
   if (e.target.id !== 'themeBackgroundInput') return;
 
   const file = e.target.files?.[0];
@@ -3910,21 +3761,19 @@ async function initializeDashboardRuntime() {
  * and refreshes the dashboard to show updated tab list.
  */
 function setupTabChangeListener() {
-  console.log('[tab-harbor] Setting up tab change listener');
+  // console.log('[tab-harbor] Setting up tab change listener');
   
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('[tab-harbor] Received message:', message);
+    // console.log('[tab-harbor] Received message:', message);
     
     if (message.action === 'tabs-changed') {
       // Skip refresh if we just performed a tab action ourselves
       // This prevents animation spam when closing tabs from the dashboard
-      if (window.__suppressAutoRefresh) {
-        console.log('[tab-harbor] Auto-refresh suppressed (recent user action)');
-        window.__suppressAutoRefresh = false;
+      if (Date.now() < (window.__suppressAutoRefreshUntil || 0)) {
         return;
       }
       
-      console.log('[tab-harbor] Tab changed, scheduling refresh...');
+      // console.log('[tab-harbor] Tab changed, scheduling refresh...');
       
       // Debounce rapid changes (e.g., closing multiple tabs)
       if (window.__tabRefreshTimeout) {
@@ -3933,10 +3782,10 @@ function setupTabChangeListener() {
       
       window.__tabRefreshTimeout = setTimeout(async () => {
         try {
-          console.log('[tab-harbor] Refreshing dashboard...');
+          // console.log('[tab-harbor] Refreshing dashboard...');
           await renderDashboard();
           updateBackToTopVisibility();
-          console.log('[tab-harbor] Dashboard refreshed successfully');
+          // console.log('[tab-harbor] Dashboard refreshed successfully');
         } catch (err) {
           console.warn('[tab-harbor] Failed to refresh dashboard:', err);
         }
