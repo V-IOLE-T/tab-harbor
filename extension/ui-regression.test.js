@@ -223,6 +223,20 @@ test('group drag commit reorders cards in place instead of refreshing the whole 
   assert.match(appJs, /applyLiveGroupOrder\(nextGroupOrder,\s*\{\s*reorderCards:\s*true,\s*reorderNav:\s*true\s*\}\);\s*await syncChromeTabGroupsWithoutImportEcho\(\);/);
 });
 
+test('session group naming no longer depends on removed chrome import fallback helpers', () => {
+  assert.match(appJs, /function createUniqueSessionGroupName\(baseName, groups = sessionGroupsState\.groups, excludeGroupId = ''\) \{/);
+  assert.match(appJs, /const lowerFallback = fallbackName\.toLowerCase\(\);/);
+  assert.match(appJs, /while \(takenNames\.has\(`\$\{lowerFallback\} \$\{suffix\}`\)\) suffix \+= 1;/);
+  assert.doesNotMatch(appJs, /return fallbackBuildChromeImportName\(baseName, groups, excludeGroupId\);/);
+});
+
+test('page chip drag commits without movement toasts', () => {
+  assert.doesNotMatch(appJs, /showToast\(runtimeT \? runtimeT\('toastMovedTo'/);
+  assert.doesNotMatch(appJs, /showToast\(runtimeT \? runtimeT\('toastCreatedGroup'/);
+  assert.match(appJs, /logPageChipDragDebug\('finish-group-move'/);
+  assert.match(appJs, /logPageChipDragDebug\('finish-new-group'/);
+});
+
 test('back-to-top button styles and behavior are wired up', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 

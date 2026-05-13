@@ -313,7 +313,20 @@ function getGroupDisplayLabel(group) {
 }
 
 function createUniqueSessionGroupName(baseName, groups = sessionGroupsState.groups, excludeGroupId = '') {
-  return fallbackBuildChromeImportName(baseName, groups, excludeGroupId);
+  const fallbackName = String(baseName || 'Group').trim() || 'Group';
+  const lowerFallback = fallbackName.toLowerCase();
+  const takenNames = new Set(
+    (groups || [])
+      .filter(group => group && String(group.id || '') !== String(excludeGroupId || ''))
+      .map(group => String(group.name || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  if (!takenNames.has(lowerFallback)) return fallbackName;
+
+  let suffix = 2;
+  while (takenNames.has(`${lowerFallback} ${suffix}`)) suffix += 1;
+  return `${fallbackName} ${suffix}`;
 }
 
 function openGroupRenameEditor(groupKey, manualGroupId = '') {
@@ -1496,7 +1509,6 @@ async function finishPageChipDrag() {
           }
           logPageChipDragDebug('finish-save-cross-order', { groupKey: movedGroup.groupKey });
           await saveCrossGroupTabRowOrder(sourceGroupKey, movedGroup.groupKey, targetListEl, draggedPageChipId);
-          showToast(runtimeT ? runtimeT('toastMovedTo', { name: movedGroup.groupName }) : `Moved to ${movedGroup.groupName}`);
           logPageChipDragDebug('finish-group-move', { groupKey: movedGroup.groupKey, groupName: movedGroup.groupName });
         }
       } else if (createNewGroup) {
@@ -1514,7 +1526,6 @@ async function finishPageChipDrag() {
           logPageChipDragDebug('create-group-save-group-order', {
             orderCount: nextGroupOrder.length,
           });
-          showToast(runtimeT ? runtimeT('toastCreatedGroup', { name: createdGroup.name }) : `Created ${createdGroup.name}`);
           logPageChipDragDebug('finish-new-group', { groupName: createdGroup.name });
         }
       }
