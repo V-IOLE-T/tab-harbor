@@ -79,6 +79,33 @@
     };
   }
 
+  function renameSessionGroup(state, groupId, name) {
+    const normalizedState = normalizeSessionGroups(state);
+    const targetGroupId = String(groupId || '');
+    const cleanName = String(name || '').trim();
+    if (!targetGroupId) throw new Error('Group not found');
+    if (!cleanName) throw new Error('Group name is required');
+
+    const groupIndex = normalizedState.groups.findIndex(group => group.id === targetGroupId);
+    if (groupIndex === -1) throw new Error('Group not found');
+
+    const exists = normalizedState.groups.some(group =>
+      group.id !== targetGroupId && group.name.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (exists) throw new Error('A group with that name already exists');
+
+    const groups = normalizedState.groups.map(group => (
+      group.id === targetGroupId
+        ? { ...group, name: cleanName }
+        : group
+    ));
+
+    return {
+      ...normalizedState,
+      groups,
+    };
+  }
+
   function pruneSessionGroups(state, openTabIds) {
     const normalizedState = normalizeSessionGroups(state);
     const openIds = new Set((openTabIds || []).map(tabId => String(tabId)));
@@ -103,6 +130,7 @@
     clearTabSessionGroup,
     normalizeSessionGroups,
     pruneSessionGroups,
+    renameSessionGroup,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

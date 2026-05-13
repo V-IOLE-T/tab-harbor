@@ -149,3 +149,34 @@ test('reconcileChromeTabGroupImports matches persisted metadata when Chrome grou
   assert.equal(result.state.assignments['33'], 'session-1');
   assert.equal(result.importedMeta.entries[0].chromeGroupId, 808);
 });
+
+test('reconcileChromeTabGroupImports reuses an existing session group by matching assignments and title when metadata is missing', () => {
+  const result = reconcileChromeTabGroupImports({
+    currentState: {
+      groups: [
+        { id: 'session-keep', name: 'Work', createdAt: '2026-04-28T00:00:00.000Z' },
+      ],
+      assignments: {
+        '41': 'session-keep',
+      },
+    },
+    importedMeta: {
+      entries: [],
+    },
+    nativeGroups: [
+      {
+        chromeGroupId: 909,
+        windowId: 1,
+        title: 'Work',
+        color: 'blue',
+        tabIds: [41],
+      },
+    ],
+  });
+
+  assert.equal(result.state.groups.length, 1);
+  assert.equal(result.state.groups[0].id, 'session-keep');
+  assert.equal(result.state.groups[0].name, 'Work');
+  assert.equal(result.state.assignments['41'], 'session-keep');
+  assert.equal(result.importedMeta.entries[0].sessionGroupId, 'session-keep');
+});

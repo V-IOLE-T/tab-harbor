@@ -133,6 +133,7 @@ function showToast(message, { action } = {}) {
   const toastText = document.getElementById('toastText');
   if (!toast || !toastText) return;
   const toastAction = document.getElementById('toastAction');
+  if (!toast || !toastText) return;
 
   toastText.textContent = message;
 

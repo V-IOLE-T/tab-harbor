@@ -6,10 +6,15 @@
   }
 
   function normalizeGroupOrderState(input) {
+    const durableOrder = uniqueKeys(
+      input?.sessionOrder?.length
+        ? input.sessionOrder
+        : (input?.pinnedOrder || [])
+    );
     return {
-      sessionOrder: uniqueKeys(input?.sessionOrder || []),
-      pinnedOrder: uniqueKeys(input?.pinnedOrder || []),
-      pinEnabled: Boolean(input?.pinEnabled),
+      sessionOrder: durableOrder,
+      pinnedOrder: durableOrder,
+      pinEnabled: false,
     };
   }
 
@@ -35,11 +40,7 @@
   function applyGroupOrder(groups, state) {
     const normalizedState = normalizeGroupOrderState(state);
     const availableKeys = groups.map(group => String(group.domain));
-    const preferredOrder = normalizedState.sessionOrder.length > 0
-      ? normalizedState.sessionOrder
-      : normalizedState.pinEnabled
-        ? normalizedState.pinnedOrder
-        : [];
+    const preferredOrder = normalizedState.sessionOrder;
 
     const finalKeys = mergeOrder(preferredOrder, availableKeys);
     const orderMap = new Map(finalKeys.map((key, index) => [key, index]));
@@ -69,19 +70,15 @@
 
   function setPinEnabled(state, pinEnabled, currentOrderKeys = []) {
     const normalizedState = normalizeGroupOrderState(state);
-    const nextState = {
-      ...normalizedState,
-      pinEnabled: Boolean(pinEnabled),
-    };
-
-    if (nextState.pinEnabled) {
-      const orderKeys = normalizedState.sessionOrder.length > 0
-        ? normalizedState.sessionOrder
-        : uniqueKeys(currentOrderKeys);
-      nextState.pinnedOrder = mergeOrder(orderKeys, uniqueKeys(currentOrderKeys));
-    }
-
-    return nextState;
+    const orderKeys = normalizedState.sessionOrder.length > 0
+      ? normalizedState.sessionOrder
+      : uniqueKeys(currentOrderKeys);
+    const durableOrder = mergeOrder(orderKeys, uniqueKeys(currentOrderKeys));
+    return normalizeGroupOrderState({
+      sessionOrder: durableOrder,
+      pinnedOrder: durableOrder,
+      pinEnabled: false,
+    });
   }
 
   const api = {

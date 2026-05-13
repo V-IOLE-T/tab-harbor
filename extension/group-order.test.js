@@ -10,7 +10,7 @@ const {
   setPinEnabled,
 } = require('./group-order.js');
 
-test('normalizeGroupOrderState keeps stable arrays and pin flag', () => {
+test('normalizeGroupOrderState normalizes to a single durable order', () => {
   const state = normalizeGroupOrderState({
     sessionOrder: ['github.com', 'chatgpt.com'],
     pinnedOrder: ['chatgpt.com'],
@@ -18,8 +18,8 @@ test('normalizeGroupOrderState keeps stable arrays and pin flag', () => {
   });
 
   assert.deepEqual(state.sessionOrder, ['github.com', 'chatgpt.com']);
-  assert.deepEqual(state.pinnedOrder, ['chatgpt.com']);
-  assert.equal(state.pinEnabled, true);
+  assert.deepEqual(state.pinnedOrder, ['github.com', 'chatgpt.com']);
+  assert.equal(state.pinEnabled, false);
 });
 
 test('applyGroupOrder prefers session order, then appends unseen groups', () => {
@@ -41,7 +41,7 @@ test('applyGroupOrder prefers session order, then appends unseen groups', () => 
   );
 });
 
-test('applyGroupOrder falls back to pinned order when session order is empty', () => {
+test('applyGroupOrder falls back to stored durable order when session order is empty', () => {
   const groups = [
     { domain: 'github.com' },
     { domain: 'chatgpt.com' },
@@ -81,7 +81,7 @@ test('createReorderedKeys can preview dropping after the hovered target', () => 
   assert.deepEqual(reordered, ['github.com', '__landing-pages__', 'chatgpt.com']);
 });
 
-test('setPinEnabled snapshots current order when pinning', () => {
+test('setPinEnabled preserves the current durable order for legacy callers', () => {
   const nextState = setPinEnabled(
     {
       sessionOrder: ['chatgpt.com', 'github.com'],
@@ -92,6 +92,7 @@ test('setPinEnabled snapshots current order when pinning', () => {
     ['chatgpt.com', 'github.com']
   );
 
-  assert.equal(nextState.pinEnabled, true);
+  assert.equal(nextState.pinEnabled, false);
+  assert.deepEqual(nextState.sessionOrder, ['chatgpt.com', 'github.com']);
   assert.deepEqual(nextState.pinnedOrder, ['chatgpt.com', 'github.com']);
 });

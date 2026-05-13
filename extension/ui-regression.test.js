@@ -7,6 +7,7 @@ const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const appEntryJs = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const backgroundJs = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+const chromeImportJs = fs.readFileSync(path.join(__dirname, 'chrome-tab-groups-import.js'), 'utf8');
 const runtimeJs = fs.readFileSync(path.join(__dirname, 'dashboard-runtime.js'), 'utf8');
 const themeJs = fs.readFileSync(path.join(__dirname, 'theme-controls.js'), 'utf8');
 const drawerJs = fs.readFileSync(path.join(__dirname, 'drawer-manager.js'), 'utf8');
@@ -17,31 +18,16 @@ const configJs = fs.readFileSync(path.join(__dirname, 'config.js'), 'utf8');
 const configLoaderJs = fs.readFileSync(path.join(__dirname, 'config-loader.js'), 'utf8');
 const appJs = [appEntryJs, runtimeJs, themeJs, drawerJs, helperJs].join('\n');
 
-test('move menu keeps hidden state until explicitly opened', () => {
+test('tab chips no longer render move-to-group controls', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 
-  assert.match(
-    css,
-    /\.chip-move-menu\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/
-  );
-});
-
-test('mission card allows move menu to overflow outside the card', () => {
-  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
-
-  assert.match(
-    css,
-    /\.mission-card\s*\{[\s\S]*overflow:\s*visible;/
-  );
-});
-
-test('mission card is raised above sibling cards while move menu is open', () => {
-  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
-
-  assert.match(
-    css,
-    /\.mission-card:has\(\.chip-move-trigger\.is-open\)\s*\{[\s\S]*z-index:\s*40;/
-  );
+  assert.doesNotMatch(runtimeJs, /function buildMoveMenu\(tab\)/);
+  assert.doesNotMatch(runtimeJs, /toggle-move-menu/);
+  assert.doesNotMatch(runtimeJs, /move-tab-to-group/);
+  assert.doesNotMatch(runtimeJs, /move-tab-to-new-group/);
+  assert.doesNotMatch(runtimeJs, /move-tab-to-original/);
+  assert.doesNotMatch(css, /\.chip-move-menu/);
+  assert.doesNotMatch(css, /\.chip-move-wrap/);
 });
 
 test('dragging uses the original group icon as a fixed positioned element', () => {
@@ -53,16 +39,11 @@ test('dragging uses the original group icon as a fixed positioned element', () =
   );
 });
 
-test('pin button icon is rotated to point its head toward the right', () => {
+test('pin toggle is removed from the group nav controls', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 
-  assert.match(
-    css,
-    /\.group-pin-toggle svg\s*\{[\s\S]*transform:\s*none;/
-  );
-  assert.match(css, /\.group-pin-toggle\s*\{[\s\S]*border:\s*none;/);
-  assert.match(helperJs, /pin:\s+`<svg[^`]*viewBox="0 0 1024 1024"[^`]*fill="none"/);
-  assert.match(helperJs, /M648\.728381 130\.779429a73\.142857 73\.142857/);
+  assert.doesNotMatch(appJs, /headerPinToggle/);
+  assert.doesNotMatch(css, /\.group-pin-toggle/);
 });
 
 test('group nav icons disable native image dragging', () => {
@@ -79,6 +60,12 @@ test('icon fallback handling avoids inline event handlers', () => {
   assert.match(helperJs, /document\.addEventListener\('error', event =>/);
   assert.match(helperJs, /handleImageFallbackError/);
   assert.match(helperJs, /setImageFallbackAttributes/);
+});
+
+test('toast helper tolerates missing optional action button node', () => {
+  assert.match(helperJs, /if \(!toast \|\| !toastText\) return;/);
+  assert.match(helperJs, /if \(action && toastAction\)/);
+  assert.match(helperJs, /\} else if \(toastAction\) \{/);
 });
 
 test('popup group nav keeps visible fallback labels and popup-local image fallback handling', () => {
@@ -198,18 +185,56 @@ test('group nav reorder animation uses FLIP-style transition for sibling icons',
   assert.match(appJs, /cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
 });
 
-test('pin icon graphic is visually larger inside the same circular button', () => {
-  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
-
-  assert.match(
-    css,
-    /\.group-pin-toggle svg\s*\{[\s\S]*width:\s*20px;[\s\S]*height:\s*20px;/
-  );
+test('group order state is always treated as a durable persisted order', () => {
+  assert.match(runtimeJs, /sessionOrder:\s*orderKeys,/);
+  assert.match(runtimeJs, /pinnedOrder:\s*orderKeys,/);
+  assert.match(runtimeJs, /pinEnabled:\s*false,/);
 });
 
 test('drag preview only reorders top icons and defers card refresh until drop', () => {
   assert.match(appJs, /if \(options\.reorderCards !== false\)/);
   assert.match(appJs, /applyLiveGroupOrder\(previewOrderKeys,\s*\{\s*reorderCards:\s*false/);
+  assert.match(appJs, /async function renderOpenTabsLayout\(\{ rebuildGroups = true, syncChrome = false, patchDom = false, changedGroupKeys = \[\] \} = \{\}\)/);
+  assert.match(appJs, /await renderOpenTabsLayout\(\{[\s\S]*rebuildGroups: true,[\s\S]*syncChrome: true,[\s\S]*patchDom: true,[\s\S]*changedGroupKeys:/);
+});
+
+test('group drag commit reorders cards in place instead of refreshing the whole dashboard', () => {
+  assert.match(appJs, /function animateMissionCards\(missionsEl, previousRects\)/);
+  assert.match(appJs, /animateMissionCards\(missionsEl,\s*previousMissionRects\)/);
+  assert.match(appJs, /const nextGroupOrder = groupOrderState\.sessionOrder\?\.slice\(\) \|\| domainGroups\.map\(group => String\(group\.domain\)\)/);
+  assert.match(appJs, /document\.addEventListener\('pointerup', async \(\) => \{[\s\S]*const moved = dragStartPoint\?\.moved;[\s\S]*const nextGroupOrder = groupOrderState\.sessionOrder\?\.slice\(\) \|\| domainGroups\.map\(group => String\(group\.domain\)\);[\s\S]*clearGroupDragState\(\);[\s\S]*if \(moved\) \{[\s\S]*applyLiveGroupOrder\(nextGroupOrder,\s*\{\s*reorderCards:\s*true,\s*reorderNav:\s*true\s*\}\);[\s\S]*\}[\s\S]*\}\);/);
+  assert.match(appJs, /applyLiveGroupOrder\(nextGroupOrder,\s*\{\s*reorderCards:\s*true,\s*reorderNav:\s*true\s*\}\)/);
+  assert.match(appJs, /function suppressChromeTabGroupsImport\(durationMs = 1200\)/);
+  assert.match(appJs, /function syncChromeTabGroupsWithoutImportEcho\(\)/);
+  assert.match(appJs, /const ENTRY_ANIMATIONS_CLASS = 'entry-animations-enabled'/);
+  assert.match(appJs, /function primeEntryAnimations\(durationMs = 1200\)/);
+  assert.match(appJs, /function disableEntryAnimations\(\)/);
+  assert.match(appJs, /function buildPersistentGroupOrderWithInsertedGroup\(insertedGroupKey,/);
+  assert.match(appJs, /function buildPersistentGroupOrderReplacingKey\(replacementGroupKey, replacedGroupKey\)/);
+  assert.match(appJs, /async function persistGroupOrder\(orderKeys = \[\]\)/);
+  assert.match(chromeImportJs, /function findReusableSessionGroupId\(groups, assignments, nativeGroup\)/);
+  assert.match(chromeImportJs, /sessionGroupId = findReusableSessionGroupId\(groups, normalizedState\.assignments, nativeGroup\);/);
+  assert.match(appJs, /function disableChromeTabGroupsImportModeForLocalEdits\(\)/);
+  assert.match(appJs, /function shouldImportChromeGroupsIntoSessionState\(\)/);
+  assert.match(appJs, /setImportMode\(importedCount > 0\);\s*disableChromeTabGroupsImportModeForLocalEdits\(\);\s*window\.__suppressAutoRefreshUntil = Date\.now\(\) \+ 2000;\s*await renderDashboard\(\);/);
+  assert.match(appJs, /if \(!shouldImportChromeGroupsIntoSessionState\(\)\) \{[\s\S]*disableChromeTabGroupsImportModeForLocalEdits\(\);[\s\S]*return;/);
+  assert.match(appJs, /if \(enable && shouldImportChromeGroupsIntoSessionState\(\)\) \{/);
+  assert.match(appJs, /else if \(!enable && typeof reconcileChromeTabGroupImports === 'function'\) \{/);
+  assert.match(appJs, /applyLiveGroupOrder\(nextGroupOrder,\s*\{\s*reorderCards:\s*true,\s*reorderNav:\s*true\s*\}\);\s*await syncChromeTabGroupsWithoutImportEcho\(\);/);
+});
+
+test('session group naming no longer depends on removed chrome import fallback helpers', () => {
+  assert.match(appJs, /function createUniqueSessionGroupName\(baseName, groups = sessionGroupsState\.groups, excludeGroupId = ''\) \{/);
+  assert.match(appJs, /const lowerFallback = fallbackName\.toLowerCase\(\);/);
+  assert.match(appJs, /while \(takenNames\.has\(`\$\{lowerFallback\} \$\{suffix\}`\)\) suffix \+= 1;/);
+  assert.doesNotMatch(appJs, /return fallbackBuildChromeImportName\(baseName, groups, excludeGroupId\);/);
+});
+
+test('page chip drag commits without movement toasts', () => {
+  assert.doesNotMatch(appJs, /showToast\(runtimeT \? runtimeT\('toastMovedTo'/);
+  assert.doesNotMatch(appJs, /showToast\(runtimeT \? runtimeT\('toastCreatedGroup'/);
+  assert.match(appJs, /logPageChipDragDebug\('finish-group-move'/);
+  assert.match(appJs, /logPageChipDragDebug\('finish-new-group'/);
 });
 
 test('back-to-top button styles and behavior are wired up', () => {
@@ -296,12 +321,11 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(themeJs, /body\.classList\.remove\('has-custom-background'\)/);
   assert.match(themeJs, /hexToRgbChannels/);
   assert.match(themeJs, /surfaceOpacity/);
-  assert.match(themeJs, /const pinToggle = document\.getElementById\('headerPinToggle'\)/);
   assert.match(appJs, /const themeTrigger = document\.getElementById\('themeMenuTrigger'\)/);
   assert.match(appJs, /const themePanel = document\.getElementById\('themeMenuPanel'\)/);
   assert.match(appJs, /!themePanel\.contains\(e\.target\)/);
   assert.match(appJs, /id="themeMenuTrigger"/);
-  assert.match(appJs, /id="headerPinToggle"/);
+  assert.doesNotMatch(appJs, /id="headerPinToggle"/);
   assert.match(appJs, /id="themeMenuPanel"/);
   assert.match(appJs, /id="themeModeOptions"/);
   assert.match(appJs, /id="themeBackgroundInput"/);
@@ -319,13 +343,12 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(in srgb, var\(--card-bg\) calc\(var\(--custom-surface-opacity\) \+ 68%\), transparent\);/);
   assert.match(css, /\.section-count\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);
   assert.match(css, /\.group-nav-button\s*\{[\s\S]*width:\s*40px;[\s\S]*height:\s*40px;/);
-  assert.match(css, /\.group-nav-button::after,\s*\.group-pin-toggle::after\s*\{[\s\S]*background:\s*var\(--tooltip-surface\);[\s\S]*color:\s*var\(--tooltip-text\);[\s\S]*border:\s*1px solid var\(--tooltip-border\);/);
+  assert.match(css, /\.group-nav-button::after\s*\{[\s\S]*background:\s*var\(--tooltip-surface\);[\s\S]*color:\s*var\(--tooltip-text\);[\s\S]*border:\s*1px solid var\(--tooltip-border\);/);
   assert.match(css, /\.tab-cleanup-banner\s*\{[\s\S]*var\(--theme-accent-soft\)[\s\S]*border:\s*1px solid var\(--theme-accent-muted\);/);
   assert.match(css, /\.tab-cleanup-icon svg\s*\{[\s\S]*color:\s*var\(--theme-accent-strong\);/);
   assert.match(css, /\.tab-cleanup-btn\s*\{[\s\S]*background:\s*var\(--banner-action-bg\);[\s\S]*color:\s*var\(--banner-action-text\);/);
   assert.match(css, /\.tab-cleanup-btn:hover\s*\{[\s\S]*background:\s*var\(--banner-action-bg-hover\);/);
-  assert.match(css, /\.open-tabs-badge\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
-  assert.match(css, /\.open-tabs-badge\.is-duplicate\s*\{[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);/);
+  assert.match(css, /\.duplicate-count-badge\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
   assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(in srgb, var\(--workspace-chip-bg\) 92%, var\(--card-bg\) 8%\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
   assert.match(css, /\.action-btn\.close-tabs:hover\s*\{[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border-color:\s*var\(--workspace-accent-border\);/);
   assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(in srgb, var\(--card-bg\) var\(--panel-card-opacity\), transparent\);/);
@@ -516,22 +539,106 @@ test('saved and todo lists expose drag handles with drag-state styling', () => {
 
   assert.match(drawerJs, /class="drawer-reorder-handle"/);
   assert.match(appJs, /data-chip-drag-handle="tab"/);
+  assert.match(appJs, /const chipItem = e\.target\.closest\('\[data-chip-sort-id\]'\);/);
+  assert.match(appJs, /const chipAction = e\.target\.closest\('\.chip-actions'\);/);
+  assert.match(appJs, /if \(chipItem && !chipAction && e\.button === 0\)/);
+  assert.match(appJs, /e\.stopPropagation\(\);/);
+  assert.match(appJs, /document\.body\.classList\.add\('page-chip-drag-armed'\)/);
   assert.match(appJs, /const GROUP_TAB_ORDER_KEY = 'groupTabOrder'/);
   assert.match(appJs, /saveGroupTabRowOrder/);
-  assert.match(appJs, /updateGroupNavButtonIcon/);
+  assert.match(appJs, /ensureManualDropGroup/);
+  assert.match(appJs, /moveDraggedPageChipToGroup/);
+  assert.match(appJs, /createSessionGroupFromDraggedPageChip/);
+  assert.match(appJs, /function getPageChipDropTarget\(clientX, clientY\)/);
+  assert.match(appJs, /const PAGE_CHIP_DRAG_DEBUG = false;/);
+  assert.match(appJs, /function buildPreviewGroupOrderFromDom\(insertedGroupKey = ''\)/);
+  assert.match(appJs, /function clampPageChipClientPoint\(clientX, clientY\)/);
+  assert.match(appJs, /window\.innerWidth - 1/);
+  assert.match(appJs, /window\.innerHeight - 1/);
+  assert.match(appJs, /const edgeThreshold = 18;/);
+  assert.match(appJs, /clientY <= firstCardRect\.top \+ edgeThreshold/);
+  assert.match(appJs, /clientY >= lastCardRect\.bottom - edgeThreshold/);
+  assert.match(appJs, /for \(const cardEl of missionCards\) \{/);
+  assert.match(appJs, /const withinCardY = clientY >= rect\.top && clientY <= rect\.bottom;/);
+  assert.match(appJs, /const gapTop = currentRect\.bottom - gapThreshold;/);
+  assert.match(appJs, /const gapBottom = nextRect\.top \+ gapThreshold;/);
+  assert.match(appJs, /if \(clientY >= gapTop && clientY <= gapBottom\) \{/);
+  assert.match(appJs, /const sourceGroupKey = pageChipDragState\?\.sourceGroupKey \|\| '';/);
+  assert.match(appJs, /const isSourceGroup = groupKey === sourceGroupKey;/);
+  assert.match(appJs, /if \(clientY >= listRect\.bottom \+ cardEdgeThreshold\) \{/);
+  assert.match(appJs, /insertBeforeCardEl: nextCardEl,/);
+  assert.match(appJs, /pageChipNewGroupSlotEl = document\.createElement\('div'\)/);
+  assert.match(appJs, /pageChipNewGroupSlotEl\.className = 'mission-drop-new-group-slot';/);
+  assert.match(appJs, /function syncPageChipDropTarget\(clientX, clientY\)/);
+  assert.match(appJs, /const dragHandleEl = chipHandle \|\| item;/);
+  assert.match(appJs, /handleEl:\s*dragHandleEl,/);
+  assert.match(appJs, /pointerId:\s*e\.pointerId,/);
+  assert.match(appJs, /dragHandleEl\.setPointerCapture\(e\.pointerId\)/);
+  assert.match(appJs, /async function finishPageChipDrag\(\)/);
+  assert.match(appJs, /let requiresOpenTabsRebuild = true;/);
+  assert.match(appJs, /requiresOpenTabsRebuild = false;/);
+  assert.match(appJs, /clearPageChipDragState\(\{ removeNode: requiresOpenTabsRebuild \}\)/);
+  assert.match(appJs, /if \(!requiresOpenTabsRebuild\) \{[\s\S]*finish-local-reorder-commit[\s\S]*await syncChromeTabGroupsWithoutImportEcho\(\);/);
+  assert.match(appJs, /document\.addEventListener\('pointercancel', async \(e\) => \{/);
+  assert.match(appJs, /function startPageChipDragVisuals\(\)/);
+  assert.match(appJs, /pageChipDragState\.lastResolvedDropTarget = \{/);
+  assert.match(appJs, /const stickyTarget = pageChipDragState\.lastResolvedDropTarget;/);
+  assert.match(appJs, /create-group-save-group-order/);
+  assert.match(appJs, /disableChromeTabGroupsImportModeForLocalEdits\(\);[\s\S]*changedGroupKeys\.add\(sourceGroupKey\);/);
+  assert.match(appJs, /buildPersistentGroupOrderWithInsertedGroup\(createdGroupKey,\s*\{/);
+  assert.match(appJs, /await persistGroupOrder\(nextGroupOrder\);/);
+  assert.match(appJs, /if \(!movedGroup\.targetWasManualGroup\) \{[\s\S]*buildPersistentGroupOrderReplacingKey\(movedGroup\.groupKey, targetGroupKey\)/);
+  assert.match(appJs, /const clampedPoint = clampPageChipClientPoint\(clientX, clientY\);/);
+  assert.match(appJs, /if \(!pageChipDragState\.moved\) \{[\s\S]*const distance = Math\.hypot\(e\.clientX - pageChipDragState\.x, e\.clientY - pageChipDragState\.y\);[\s\S]*if \(distance >= 4\) \{/);
+  assert.match(appJs, /updateDraggedPageChipPosition\(e\.clientX, e\.clientY\);[\s\S]*syncPageChipDropTarget\(e\.clientX, e\.clientY\);/);
+  assert.match(appJs, /clearPageChipDragState\(\{ removeNode: moved \}\)/);
+  assert.match(appJs, /let suppressPageChipClickUntil = 0;/);
+  assert.match(appJs, /if \(Date\.now\(\) < suppressPageChipClickUntil\) return;/);
+  assert.match(appJs, /suppressPageChipClickUntil = Date\.now\(\) \+ 250;/);
   assert.match(appJs, /tabs:\s*getOrderedUniqueTabsForGroup\(group\)/);
-  assert.match(appJs, /if \(node === draggedPageChipEl\) return '';/);
   assert.match(drawerJs, /data-drag-handle="saved"/);
   assert.match(drawerJs, /data-drag-handle="todo"/);
   assert.doesNotMatch(drawerJs, /title="Drag to reorder"/);
   assert.match(css, /\.drawer-reorder-handle\s*\{/);
-  assert.match(css, /\.page-chip > \.chip-reorder-handle\s*\{/);
-  assert.match(css, /\.chip-reorder-handle\s*\{[\s\S]*opacity:\s*1;[\s\S]*workspace-chip-text/);
+  assert.match(css, /\.page-chip > \.chip-reorder-handle\s*\{[\s\S]*width:\s*30px;[\s\S]*height:\s*30px;/);
+  assert.match(css, /\.chip-reorder-handle\s*\{[\s\S]*opacity:\s*1;[\s\S]*border:\s*1px solid/);
   assert.match(css, /\.drawer-reorder-placeholder\s*\{/);
   assert.match(css, /body\.page-chip-list-dragging\s*\{/);
+  assert.match(css, /body\.page-chip-drag-armed,\s*body\.page-chip-drag-armed \*\s*\{/);
+  assert.match(css, /\.mission-drop-new-group-slot\s*\{/);
+  assert.match(css, /\.mission-drop-new-group-line\s*\{/);
+  assert.doesNotMatch(css, /\.page-chip-drag-debug\s*\{/);
   assert.match(css, /\.page-chip\.is-dragging\s*\{/);
   assert.match(css, /\.chip-reorder-placeholder\s*\{/);
+  assert.match(css, /\.mission-card\.is-drop-target\s*\{/);
   assert.match(css, /\.deferred-item\.is-dragging,\s*\.todo-item\.is-dragging\s*\{/);
+  assert.match(css, /\.chip-reorder-handle\s*\{[\s\S]*color:\s*color-mix\(in srgb, var\(--ink\) 84%, var\(--muted\) 16%\);/);
+  assert.match(css, /\.drawer-reorder-handle\s*\{[\s\S]*border:\s*none;[\s\S]*background:\s*transparent;[\s\S]*color:\s*color-mix\(in srgb, var\(--ink\) 86%, var\(--muted\) 14%\);/);
+});
+
+test('manual groups expose an inline rename button with pencil styling', () => {
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+
+  assert.match(appJs, /data-action="rename-session-group"/);
+  assert.match(appJs, /data-group-key="\$\{runtimeEscapeHtmlAttribute \? runtimeEscapeHtmlAttribute\(group\.domain\)/);
+  assert.match(appJs, /runtimeT \? runtimeT\('renameGroup'\) : 'Rename group'/);
+  assert.match(appJs, /function openGroupRenameEditor\(groupKey, manualGroupId = ''\)/);
+  assert.match(appJs, /function submitGroupRenameEditor\(\)/);
+  assert.match(appJs, /class="mission-rename-form"/);
+  assert.match(appJs, /data-group-rename-input="/);
+  assert.match(appJs, /if \(action === 'rename-session-group'\) \{[\s\S]*openGroupRenameEditor\(groupKey, manualGroupId\);[\s\S]*return;/);
+  assert.match(appJs, /document\.addEventListener\('pointerdown', \(e\) => \{[\s\S]*if \(!groupRenameEditorState\) return;[\s\S]*void submitGroupRenameEditor\(\);/);
+  assert.match(appJs, /document\.addEventListener\('focusout', \(e\) => \{[\s\S]*const renameInput = e\.target\.closest\('\.mission-rename-input'\);[\s\S]*void submitGroupRenameEditor\(\);/);
+  assert.match(appJs, /loadGroupLabelOverrides/);
+  assert.match(appJs, /saveGroupLabelOverrides/);
+  assert.match(css, /\.mission-title-wrap\s*\{/);
+  assert.match(css, /\.mission-rename-trigger\s*\{[\s\S]*cursor:\s*pointer;/);
+  assert.match(css, /\.mission-rename-form\s*\{[\s\S]*min-width:\s*min\(520px,\s*100%\);/);
+  assert.match(css, /\.mission-rename-input\s*\{[\s\S]*min-width:\s*280px;[\s\S]*height:\s*38px;/);
+  assert.doesNotMatch(css, /\.mission-rename-actions\s*\{/);
+  assert.doesNotMatch(css, /\.mission-rename-action\.is-primary\s*\{/);
+  assert.doesNotMatch(css, /\.mission-rename-btn\s*\{/);
+  assert.match(appJs, /class="mission-rename-trigger"/);
 });
 
 test('saved trigger icon uses the bookmark artwork', () => {
@@ -657,7 +764,12 @@ test('dynamic animation styles are generated by JavaScript instead of hardcoded 
   assert.match(appJs, /STAGGER_INCREMENT = 0\.05/);
   assert.match(appJs, /i <= MAX_STAGGER_COUNT/);
   assert.match(appJs, /\.toFixed\(2\)/);
+  assert.match(appJs, /body\.\$\{ENTRY_ANIMATIONS_CLASS\} \.active-section \.missions \.mission-card:nth-child\(\$\{i\}\)/);
+  assert.match(appJs, /body\.\$\{ENTRY_ANIMATIONS_CLASS\} \.abandoned-section \.missions \.mission-card:nth-child\(\$\{i\}\)/);
   assert.match(appJs, /injectDynamicAnimationStyles\(\);/);
+  assert.match(appJs, /primeEntryAnimations\(\);/);
+  assert.match(appJs, /document\.addEventListener\('pointerdown', disableEntryAnimations, \{ capture: true, passive: true \}\)/);
+  assert.match(css, /body\.entry-animations-enabled header \{ animation: fadeUp 0\.5s ease both; \}/);
 });
 
 test('dashboard auto-refreshes when tabs change via background message', () => {
@@ -681,7 +793,7 @@ test('dashboard auto-refreshes when tabs change via background message', () => {
 test('closing duplicate Tab Harbor tabs rerenders without dropping chrome tab group mode', () => {
   assert.match(
     runtimeJs,
-    /if \(action === 'close-tabout-dupes'\) \{[\s\S]*__suppressAutoRefresh = true;[\s\S]*await closeTabOutDupes\(\);[\s\S]*await renderDashboard\(\);[\s\S]*updateBackToTopVisibility\(\);/
+    /if \(action === 'close-tabout-dupes'\) \{[\s\S]*window\.__suppressAutoRefreshUntil = Date\.now\(\) \+ 2000;[\s\S]*await closeTabOutDupes\(\);[\s\S]*await renderDashboard\(\);[\s\S]*window\.__suppressAutoRefreshUntil = 0;[\s\S]*updateBackToTopVisibility\(\);/
   );
 });
 
@@ -707,7 +819,7 @@ test('chrome tab group mode stays active while the toggle is on', () => {
 test('theme menu keeps chrome tab groups above hitokoto and uses left-aligned toggles', () => {
   assert.match(
     runtimeJs,
-    /<label class="theme-menu-toggle-label">[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*theme-menu-toggle-slider[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*Chrome tab groups[\s\S]*<\/label>[\s\S]*<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*class="theme-toggle-switch[\s\S]*data-action="toggle-hitokoto"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*一言/
+    /<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*Chrome tab groups[\s\S]*<\/label>[\s\S]*<label class="theme-menu-toggle-label theme-menu-toggle-button-row">[\s\S]*data-action="toggle-hitokoto"[\s\S]*theme-menu-label theme-menu-toggle-text[\s\S]*一言/
   );
 
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
