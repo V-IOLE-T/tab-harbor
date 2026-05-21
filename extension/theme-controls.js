@@ -241,6 +241,8 @@ let themePreferences = {
   paletteId: 'paper',
   customBackground: '',
   surfaceOpacity: 14,
+  uiScale: 100,
+  shortcutScale: 100,
   hitokotoEnabled: true,
 };
 
@@ -257,11 +259,21 @@ function normalizeThemePreferences(input) {
   const surfaceOpacity = Number.isFinite(rawOpacity)
     ? Math.min(60, Math.max(2, Math.round(rawOpacity)))
     : 14;
+  const rawUiScale = Number(next.uiScale);
+  const uiScale = Number.isFinite(rawUiScale)
+    ? Math.min(120, Math.max(100, Math.round(rawUiScale)))
+    : 100;
+  const rawShortcutScale = Number(next.shortcutScale);
+  const shortcutScale = Number.isFinite(rawShortcutScale)
+    ? Math.min(130, Math.max(100, Math.round(rawShortcutScale)))
+    : 100;
   return {
     mode: VALID_THEME_MODES.has(rawMode) ? rawMode : 'system',
     paletteId: VALID_THEME_PALETTES.has(rawPaletteId) ? rawPaletteId : 'paper',
     customBackground: typeof next.customBackground === 'string' ? next.customBackground : '',
     surfaceOpacity,
+    uiScale,
+    shortcutScale,
     hitokotoEnabled: next.hitokotoEnabled !== false,
   };
 }
@@ -436,16 +448,53 @@ function computeThemeOpacityVars(surfaceOpacity) {
   };
 }
 
+function computeThemeSizeVars({ uiScale = 100, shortcutScale = 100 } = {}) {
+  const normalizedUiScale = Math.min(120, Math.max(100, Math.round(Number(uiScale) || 100)));
+  const normalizedShortcutScale = Math.min(130, Math.max(100, Math.round(Number(shortcutScale) || 100)));
+  const shortcutRatio = normalizedShortcutScale / 100;
+  const scaledFont = basePx => `${Math.round(basePx * normalizedUiScale) / 100}px`;
+
+  return {
+    '--ui-scale': String(normalizedUiScale / 100),
+    '--shortcut-scale': String(shortcutRatio),
+    '--ui-font-8': scaledFont(8),
+    '--ui-font-9': scaledFont(9),
+    '--ui-font-10': scaledFont(10),
+    '--ui-font-11': scaledFont(11),
+    '--ui-font-12': scaledFont(12),
+    '--ui-font-13': scaledFont(13),
+    '--ui-font-14': scaledFont(14),
+    '--ui-font-15': scaledFont(15),
+    '--ui-font-16': scaledFont(16),
+    '--ui-font-17': scaledFont(17),
+    '--ui-font-18': scaledFont(18),
+    '--ui-font-20': scaledFont(20),
+    '--ui-font-22': scaledFont(22),
+    '--ui-font-24': scaledFont(24),
+    '--ui-font-28': scaledFont(28),
+    '--ui-font-40': scaledFont(40),
+    '--quick-shortcut-card-size': `${Math.round(76 * shortcutRatio)}px`,
+    '--quick-shortcut-shell-size': `${Math.round(40 * shortcutRatio)}px`,
+    '--quick-shortcut-icon-wrap-size': `${Math.round(40 * shortcutRatio)}px`,
+    '--quick-shortcut-icon-size': `${Math.round(22 * shortcutRatio)}px`,
+    '--quick-shortcut-label-size': `${Math.round(11 * shortcutRatio)}px`,
+  };
+}
+
 function applyThemePreferences() {
   const root = document.documentElement;
   const body = document.body;
   const theme = getResolvedThemeDefinition(themePreferences);
   const opacityVars = computeThemeOpacityVars(themePreferences.surfaceOpacity);
+  const sizeVars = computeThemeSizeVars(themePreferences);
 
   Object.entries(theme.vars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
   Object.entries(opacityVars).forEach(([name, value]) => {
+    root.style.setProperty(name, value);
+  });
+  Object.entries(sizeVars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
   if (body) {
@@ -476,12 +525,31 @@ function renderThemeMenu() {
   const options = document.getElementById('themeOptions');
   const transparencyRange = document.getElementById('themeTransparencyRange');
   const transparencyValue = document.getElementById('themeTransparencyValue');
-  if (!trigger || !panel || !modeOptions || !options || !transparencyRange || !transparencyValue) return;
+  const uiScaleRange = document.getElementById('themeUiScaleRange');
+  const uiScaleValue = document.getElementById('themeUiScaleValue');
+  const shortcutScaleRange = document.getElementById('themeShortcutScaleRange');
+  const shortcutScaleValue = document.getElementById('themeShortcutScaleValue');
+  if (
+    !trigger ||
+    !panel ||
+    !modeOptions ||
+    !options ||
+    !transparencyRange ||
+    !transparencyValue ||
+    !uiScaleRange ||
+    !uiScaleValue ||
+    !shortcutScaleRange ||
+    !shortcutScaleValue
+  ) return;
 
   trigger.setAttribute('aria-expanded', String(themeMenuOpen));
   panel.hidden = !themeMenuOpen;
   transparencyRange.value = String(themePreferences.surfaceOpacity);
   transparencyValue.textContent = `${themePreferences.surfaceOpacity}%`;
+  uiScaleRange.value = String(themePreferences.uiScale);
+  uiScaleValue.textContent = `${themePreferences.uiScale}%`;
+  shortcutScaleRange.value = String(themePreferences.shortcutScale);
+  shortcutScaleValue.textContent = `${themePreferences.shortcutScale}%`;
 
   modeOptions.innerHTML = THEME_MODE_ORDER.map(id => `
     <button
@@ -2005,11 +2073,15 @@ function syncPopupTheme(targetDoc) {
   if (!root) return;
   const theme = getResolvedThemeDefinition(themePreferences);
   const opacityVars = computeThemeOpacityVars(themePreferences.surfaceOpacity);
+  const sizeVars = computeThemeSizeVars(themePreferences);
 
   Object.entries(theme.vars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
   Object.entries(opacityVars).forEach(([name, value]) => {
+    root.style.setProperty(name, value);
+  });
+  Object.entries(sizeVars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
   if (body) {

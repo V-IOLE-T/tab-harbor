@@ -48,10 +48,28 @@ test('normalizeThemePreferences migrates legacy light theme ids to light palette
 });
 
 test('normalizeThemePreferences keeps explicit mode and palette values', () => {
-  const result = normalizeThemePreferences({ mode: 'system', paletteId: 'blush', surfaceOpacity: 9 });
+  const result = normalizeThemePreferences({
+    mode: 'system',
+    paletteId: 'blush',
+    surfaceOpacity: 9,
+    uiScale: 112,
+    shortcutScale: 124,
+  });
   assert.equal(result.mode, 'system');
   assert.equal(result.paletteId, 'blush');
   assert.equal(result.surfaceOpacity, 9);
+  assert.equal(result.uiScale, 112);
+  assert.equal(result.shortcutScale, 124);
+});
+
+test('normalizeThemePreferences clamps size controls to calm readable ranges', () => {
+  const small = normalizeThemePreferences({ uiScale: 40, shortcutScale: 40 });
+  assert.equal(small.uiScale, 100);
+  assert.equal(small.shortcutScale, 100);
+
+  const large = normalizeThemePreferences({ uiScale: 180, shortcutScale: 180 });
+  assert.equal(large.uiScale, 120);
+  assert.equal(large.shortcutScale, 130);
 });
 
 test('getResolvedTone follows system preference when mode is system', () => {

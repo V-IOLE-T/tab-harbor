@@ -2246,6 +2246,38 @@ function renderGroupNavArea(groups) {
           </div>
         </div>
         <div class="theme-menu-section">
+          <div class="theme-menu-row theme-menu-row-inline-range">
+            <div class="theme-menu-label">${runtimeT ? runtimeT('uiScaleLabel') : 'Text size'}</div>
+            <input
+              class="theme-range"
+              id="themeUiScaleRange"
+              type="range"
+              aria-label="${runtimeT ? runtimeT('uiScaleLabel') : 'Text size'}"
+              min="100"
+              max="120"
+              step="1"
+              value="100"
+            >
+            <div class="theme-range-value" id="themeUiScaleValue">100%</div>
+          </div>
+        </div>
+        <div class="theme-menu-section">
+          <div class="theme-menu-row theme-menu-row-inline-range">
+            <div class="theme-menu-label">${runtimeT ? runtimeT('shortcutScaleLabel') : 'Shortcut size'}</div>
+            <input
+              class="theme-range"
+              id="themeShortcutScaleRange"
+              type="range"
+              aria-label="${runtimeT ? runtimeT('shortcutScaleLabel') : 'Shortcut size'}"
+              min="100"
+              max="130"
+              step="1"
+              value="100"
+            >
+            <div class="theme-range-value" id="themeShortcutScaleValue">100%</div>
+          </div>
+        </div>
+        <div class="theme-menu-section">
           <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
             <button class="theme-toggle-switch ${chromeTabGroupsEnabled ? 'is-active' : ''}" type="button" data-action="toggle-chrome-tab-groups" aria-pressed="${chromeTabGroupsEnabled ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}"></button>
             <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('chromeTabGroupsLabel') : 'Chrome tab groups'}</span>
@@ -3606,6 +3638,30 @@ document.addEventListener('input', async (e) => {
     applyThemePreferences();
     const valueEl = document.getElementById('themeTransparencyValue');
     if (valueEl) valueEl.textContent = `${themePreferences.surfaceOpacity}%`;
+    await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: themePreferences });
+    return;
+  }
+
+  if (e.target.id === 'themeUiScaleRange') {
+    themePreferences = normalizeThemePreferences({
+      ...themePreferences,
+      uiScale: Number(e.target.value),
+    });
+    applyThemePreferences();
+    const valueEl = document.getElementById('themeUiScaleValue');
+    if (valueEl) valueEl.textContent = `${themePreferences.uiScale}%`;
+    await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: themePreferences });
+    return;
+  }
+
+  if (e.target.id === 'themeShortcutScaleRange') {
+    themePreferences = normalizeThemePreferences({
+      ...themePreferences,
+      shortcutScale: Number(e.target.value),
+    });
+    applyThemePreferences();
+    const valueEl = document.getElementById('themeShortcutScaleValue');
+    if (valueEl) valueEl.textContent = `${themePreferences.shortcutScale}%`;
     await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: themePreferences });
     return;
   }

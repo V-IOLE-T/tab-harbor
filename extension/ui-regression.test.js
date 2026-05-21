@@ -331,6 +331,16 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(appJs, /id="themeBackgroundInput"/);
   assert.match(appJs, /id="themeTransparencyRange"/);
   assert.match(appJs, /id="themeTransparencyValue"/);
+  assert.match(appJs, /id="themeUiScaleRange"/);
+  assert.match(appJs, /id="themeUiScaleValue"/);
+  assert.match(appJs, /id="themeShortcutScaleRange"/);
+  assert.match(appJs, /id="themeShortcutScaleValue"/);
+  assert.match(themeJs, /uiScale/);
+  assert.match(themeJs, /shortcutScale/);
+  assert.match(css, /--ui-scale:/);
+  assert.match(css, /--shortcut-scale:/);
+  assert.match(css, /\.quick-tabs-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill, var\(--quick-shortcut-card-size\)\);/);
+  assert.match(css, /\.quick-shortcut-card\s*\{[\s\S]*width:\s*var\(--quick-shortcut-card-size\);[\s\S]*flex:\s*0 0 var\(--quick-shortcut-card-size\);/);
   assert.match(themeJs, /Math\.min\(60, Math\.max\(2, Math\.round\(rawOpacity\)\)\)/);
   assert.match(appJs, /chrome\.search\?\.query/);
   assert.match(appJs, /disposition:\s*'CURRENT_TAB'/);
@@ -366,11 +376,11 @@ test('quick tabs area renders shortcut cards and add button hooks', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 
   assert.match(css, /\.quick-tabs-grid\s*\{/);
-  assert.match(css, /\.quick-tabs-grid\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(auto-fill, 76px\);[\s\S]*justify-content:\s*flex-start;/);
+  assert.match(css, /\.quick-tabs-grid\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(auto-fill, var\(--quick-shortcut-card-size\)\);[\s\S]*justify-content:\s*flex-start;/);
   assert.match(css, /\.quick-shortcut-card\s*\{/);
   assert.match(css, /\.quick-shortcut-card\s*\{[\s\S]*border:\s*none;/);
-  assert.match(css, /\.quick-shortcut-card\s*\{[\s\S]*grid-template-rows:\s*40px auto;/);
-  assert.match(css, /\.quick-shortcut-card\s*\{[\s\S]*width:\s*76px;[\s\S]*flex:\s*0 0 76px;/);
+  assert.match(css, /\.quick-shortcut-card\s*\{[\s\S]*grid-template-rows:\s*var\(--quick-shortcut-shell-size\) auto;/);
+  assert.match(css, /\.quick-shortcut-card\s*\{[\s\S]*width:\s*var\(--quick-shortcut-card-size\);[\s\S]*flex:\s*0 0 var\(--quick-shortcut-card-size\);/);
   assert.match(css, /\.quick-shortcut-icon-wrap\s*\{[\s\S]*border:\s*none;/);
   assert.match(css, /\.quick-shortcut-custom-glyph\s*\{/);
   assert.match(css, /\.quick-shortcut-icon-custom\s*\{/);
@@ -509,7 +519,7 @@ test('quick shortcuts support drag reordering with persisted order and drag prev
   assert.match(css, /body\.quick-shortcut-list-dragging\s*\{/);
   assert.match(css, /\.quick-shortcut-card\.is-drag-ghost\s*\{[\s\S]*position:\s*fixed;[\s\S]*height:\s*var\(--drag-height, auto\);[\s\S]*pointer-events:\s*none;/);
   assert.match(css, /\.quick-shortcut-card\.is-drag-ghost \.quick-shortcut-open\s*\{[\s\S]*transform:\s*none;[\s\S]*transition:\s*none;/);
-  assert.match(css, /\.quick-shortcut-slot\s*\{[\s\S]*width:\s*76px;[\s\S]*min-height:\s*56px;[\s\S]*pointer-events:\s*none;/);
+  assert.match(css, /\.quick-shortcut-slot\s*\{[\s\S]*width:\s*var\(--quick-shortcut-card-size\);[\s\S]*min-height:\s*calc\(var\(--quick-shortcut-shell-size\) \+ 16px\);[\s\S]*pointer-events:\s*none;/);
 });
 
 test('quick shortcut add flows keep toast actions clickable and avoid stale duplicate state', () => {
@@ -721,7 +731,7 @@ test('theme state uses separate mode and palette preferences', () => {
 });
 
 test('quick shortcuts overwrite the current Tab Harbor tab instead of focusing another tab or opening a new one', () => {
-  assert.match(runtimeJs, /async function navigateCurrentTabToUrl\(url\)\s*\{[\s\S]*chrome\.tabs\.getCurrent\(\)[\s\S]*chrome\.tabs\.update\(currentTab\.id,\s*\{\s*url,\s*active:\s*true\s*\}\)[\s\S]*chrome\.tabs\.query\(\{\s*active:\s*true,\s*currentWindow:\s*true,\s*\}\)[\s\S]*chrome\.tabs\.update\(activeTab\.id,\s*\{\s*url,\s*active:\s*true\s*\}\)/);
+  assert.match(runtimeJs, /async function navigateCurrentTabToUrl\(url\)\s*\{[\s\S]*chrome\.tabs\.query\(\{\s*active:\s*true,\s*currentWindow:\s*true\s*\}\)[\s\S]*chrome\.tabs\.update\(activeTab\.id,\s*\{\s*url\s*\}\)[\s\S]*return true;/);
   assert.match(runtimeJs, /async function openOrFocusUrl\(url\)\s*\{\s*if \(!url\) return false;\s*await navigateCurrentTabToUrl\(url\);\s*return true;\s*\}/);
   assert.match(runtimeJs, /const fallbackUrl = `https:\/\/www\.google\.com\/search\?q=\$\{encodeURIComponent\(text\)\}`;\s*await navigateCurrentTabToUrl\(fallbackUrl\);/);
 });

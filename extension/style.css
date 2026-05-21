@@ -31,6 +31,29 @@
   --custom-border-opacity: 14%;
   --custom-badge-opacity: 4%;
   --custom-fallback-opacity: 5%;
+  --ui-scale: 1;
+  --shortcut-scale: 1;
+  --ui-font-8: 8px;
+  --ui-font-9: 9px;
+  --ui-font-10: 10px;
+  --ui-font-11: 11px;
+  --ui-font-12: 12px;
+  --ui-font-13: 13px;
+  --ui-font-14: 14px;
+  --ui-font-15: 15px;
+  --ui-font-16: 16px;
+  --ui-font-17: 17px;
+  --ui-font-18: 18px;
+  --ui-font-20: 20px;
+  --ui-font-22: 22px;
+  --ui-font-24: 24px;
+  --ui-font-28: 28px;
+  --ui-font-40: 40px;
+  --quick-shortcut-card-size: 76px;
+  --quick-shortcut-shell-size: 40px;
+  --quick-shortcut-icon-wrap-size: 40px;
+  --quick-shortcut-icon-size: 22px;
+  --quick-shortcut-label-size: 11px;
   --floating-surface-opacity: clamp(82%, calc(var(--custom-surface-opacity) + 54%), 94%);
   --floating-border-opacity: clamp(30%, calc(var(--custom-border-opacity) + 18%), 64%);
   --panel-surface-opacity: 92%;
@@ -64,6 +87,7 @@
 
 body {
   font-family: 'Public Sans', sans-serif;
+  font-size: var(--ui-font-14);
   background-color: var(--paper);
   background-image: var(--page-custom-background);
   background-size: cover;
@@ -138,6 +162,7 @@ body.theme-tone-dark::before {
   font-family: 'Libre Caslon Display', serif;
   font-weight: 400;
   font-size: 40px;
+  font-size: var(--ui-font-40);
   letter-spacing: -0.02em;
   color: var(--ink);
   margin-bottom: 0;
@@ -147,6 +172,7 @@ body.theme-tone-dark::before {
 
 .header-left .date {
   font-size: 10px;
+  font-size: var(--ui-font-10);
   color: var(--muted);
   font-weight: 600;
   letter-spacing: 0.18em;
@@ -160,6 +186,7 @@ body.theme-tone-dark::before {
   margin-top: 10px;
   font-family: 'Libre Caslon Display', serif;
   font-size: 14px;
+  font-size: var(--ui-font-14);
   line-height: 1.6;
   color: color-mix(in srgb, var(--muted) 85%, var(--ink) 15%);
   max-width: 520px;
@@ -171,6 +198,7 @@ body.theme-tone-dark::before {
 
 .hitokoto-from {
   font-size: 12px;
+  font-size: var(--ui-font-12);
   color: var(--muted);
   font-style: normal;
   white-space: nowrap;
@@ -229,6 +257,7 @@ body.theme-tone-dark::before {
   color: var(--ink);
   font: inherit;
   font-size: 15px;
+  font-size: var(--ui-font-15);
 }
 
 .header-search-input::placeholder {
@@ -243,7 +272,7 @@ body.theme-tone-dark::before {
 
 .quick-tabs-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 76px);
+  grid-template-columns: repeat(auto-fill, var(--quick-shortcut-card-size));
   justify-content: flex-start;
   align-items: flex-start;
   gap: 12px 10px;
@@ -252,8 +281,9 @@ body.theme-tone-dark::before {
 
 .quick-shortcut-card {
   position: relative;
-  width: 76px;
-  flex: 0 0 76px;
+  width: var(--quick-shortcut-card-size);
+  flex: 0 0 var(--quick-shortcut-card-size);
+  border: none;
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
   will-change: transform;
 }
@@ -266,7 +296,7 @@ body.theme-tone-dark::before {
   min-height: 0;
   padding: 0;
   display: grid;
-  grid-template-rows: 40px auto;
+  grid-template-rows: var(--quick-shortcut-shell-size) auto;
   justify-items: center;
   align-content: start;
   gap: 6px;
@@ -382,8 +412,8 @@ body.theme-tone-dark::before {
 }
 
 .quick-shortcut-icon-wrap {
-  width: 40px;
-  height: 40px;
+  width: var(--quick-shortcut-icon-wrap-size);
+  height: var(--quick-shortcut-icon-wrap-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -401,8 +431,8 @@ body.theme-tone-dark::before {
 }
 
 .quick-shortcut-icon {
-  width: 22px;
-  height: 22px;
+  width: var(--quick-shortcut-icon-size);
+  height: var(--quick-shortcut-icon-size);
   border-radius: 6px;
   object-fit: cover;
 }
@@ -412,18 +442,18 @@ body.theme-tone-dark::before {
 }
 
 .quick-shortcut-custom-glyph {
-  width: 22px;
-  height: 22px;
+  width: var(--quick-shortcut-icon-size);
+  height: var(--quick-shortcut-icon-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 19px;
+  font-size: calc(var(--quick-shortcut-icon-size) * 0.86);
   line-height: 1;
 }
 
 .quick-shortcut-fallback {
-  width: 22px;
-  height: 22px;
+  width: var(--quick-shortcut-icon-size);
+  height: var(--quick-shortcut-icon-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -431,12 +461,14 @@ body.theme-tone-dark::before {
   background: var(--theme-accent-soft);
   color: var(--theme-accent-strong);
   font-size: 10px;
+  font-size: calc(var(--quick-shortcut-label-size) * 0.91);
   font-weight: 700;
   letter-spacing: 0.05em;
 }
 
 .quick-shortcut-label {
   font-size: 11px;
+  font-size: var(--quick-shortcut-label-size);
   line-height: 1.45;
   color: color-mix(in srgb, var(--ink) 82%, var(--muted) 18%);
   display: -webkit-box;
@@ -501,9 +533,9 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 }
 
 .quick-shortcut-slot {
-  width: 76px;
-  flex: 0 0 76px;
-  min-height: 56px;
+  width: var(--quick-shortcut-card-size);
+  flex: 0 0 var(--quick-shortcut-card-size);
+  min-height: calc(var(--quick-shortcut-shell-size) + 16px);
   pointer-events: none;
 }
 
@@ -610,6 +642,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 
 .theme-menu-label {
   font-size: 10px;
+  font-size: var(--ui-font-10);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
@@ -621,6 +654,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 
 .theme-range-value {
   font-size: 11px;
+  font-size: var(--ui-font-11);
   color: var(--ink);
   font-weight: 600;
   flex: 0 0 auto;
@@ -676,6 +710,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
   padding: 2px 0;
   font-family: 'Public Sans', sans-serif;
   font-size: 12px;
+  font-size: var(--ui-font-12);
   font-weight: 600;
   cursor: pointer;
   transition: color 0.15s ease, opacity 0.15s ease;
@@ -751,6 +786,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 
 .theme-option-name {
   font-size: 12px;
+  font-size: var(--ui-font-12);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1109,6 +1145,7 @@ body.theme-tone-dark .deferred-shell {
   font-family: 'Public Sans', sans-serif;
   font-weight: 700;
   font-size: 11px;
+  font-size: var(--ui-font-11);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--workspace-chip-text) 72%, var(--muted) 28%);
@@ -1126,6 +1163,7 @@ body.theme-tone-dark .deferred-shell {
   align-items: center;
   gap: 10px;
   font-size: 12px;
+  font-size: var(--ui-font-12);
   color: var(--workspace-chip-text);
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -1371,6 +1409,7 @@ body.group-dragging .group-nav-button {
 .mission-name {
   font-weight: 600;
   font-size: 15px;
+  font-size: var(--ui-font-15);
   color: var(--ink);
   letter-spacing: -0.01em;
 }
@@ -1411,6 +1450,7 @@ body.group-dragging .group-nav-button {
   background: color-mix(in srgb, var(--card-bg) 94%, var(--theme-accent-soft) 6%);
   color: var(--ink);
   font: 600 15px/1.2 'Public Sans', sans-serif;
+  font-size: var(--ui-font-15);
 }
 
 .mission-rename-input:focus {
@@ -1421,6 +1461,7 @@ body.group-dragging .group-nav-button {
 
 .mission-tag {
   font-size: 10px;
+  font-size: var(--ui-font-10);
   text-transform: uppercase;
   letter-spacing: 1px;
   font-weight: 600;
@@ -1448,6 +1489,7 @@ body.group-dragging .group-nav-button {
   display: inline-flex;
   align-items: center;
   font-size: 10px;
+  font-size: var(--ui-font-10);
   font-weight: 600;
   color: var(--workspace-chip-text);
   background: var(--workspace-chip-bg-strong);
@@ -1458,6 +1500,7 @@ body.group-dragging .group-nav-button {
 
 .mission-summary {
   font-size: 12px;
+  font-size: var(--ui-font-12);
   color: var(--muted);
   line-height: 1.55;
   margin-bottom: 8px;
@@ -1487,6 +1530,7 @@ body.group-dragging .group-nav-button {
 /* ---- Tab row — each tab is a full-width row with favicon, title, and actions ---- */
 .page-chip {
   font-size: 13px;
+  font-size: var(--ui-font-13);
   color: var(--ink);
   background: transparent;
   padding: 8px 2px;
@@ -1637,6 +1681,7 @@ body.group-dragging .group-nav-button {
 /* "+N more" overflow chip */
 .page-chip-overflow {
   font-size: 11px;
+  font-size: var(--ui-font-11);
   color: var(--muted);
   padding: 4px 2px;
 }
@@ -1645,12 +1690,14 @@ body.group-dragging .group-nav-button {
 
 .mission-time {
   font-size: 12px;
+  font-size: var(--ui-font-12);
   color: var(--muted);
   margin-bottom: 4px;
 }
 
 .mission-page-count {
   font-size: 20px;
+  font-size: var(--ui-font-20);
   font-family: 'Libre Caslon Display', serif;
   font-weight: 300;
   color: var(--ink);
@@ -1659,6 +1706,7 @@ body.group-dragging .group-nav-button {
 
 .mission-page-label {
   font-size: 10px;
+  font-size: var(--ui-font-10);
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -1682,6 +1730,7 @@ body.group-dragging .group-nav-button {
 
 .action-btn {
   font-size: 11px;
+  font-size: var(--ui-font-11);
   font-family: 'Public Sans', sans-serif;
   font-weight: 600;
   padding: 6px 12px;
@@ -2369,6 +2418,7 @@ body.entry-animations-enabled .deferred-column .section-header { animation: fade
 
 .update-banner-text {
   font-size: 13px;
+  font-size: var(--ui-font-13);
   color: var(--ink);
   font-weight: 400;
   line-height: 1.4;
@@ -2387,6 +2437,7 @@ body.entry-animations-enabled .deferred-column .section-header { animation: fade
 .update-banner-btn {
   font-family: 'Public Sans', sans-serif;
   font-size: 12px;
+  font-size: var(--ui-font-12);
   font-weight: 500;
   color: #fff;
   background: var(--accent-sage);
@@ -2589,6 +2640,7 @@ body.entry-animations-enabled .deferred-column .section-header { animation: fade
   font-family: 'Libre Caslon Display', serif;
   font-weight: 400;
   font-size: 22px;
+  font-size: var(--ui-font-22);
   line-height: 1.02;
   color: var(--drawer-tab-idle);
   cursor: pointer;
@@ -2797,6 +2849,7 @@ body.entry-animations-enabled .deferred-column .section-header { animation: fade
 
 .deferred-title {
   font-size: 14px;
+  font-size: var(--ui-font-14);
   line-height: 1.45;
   color: var(--ink);
   text-decoration: none;
@@ -2813,6 +2866,7 @@ body.entry-animations-enabled .deferred-column .section-header { animation: fade
 
 .deferred-meta {
   font-size: 11px;
+  font-size: var(--ui-font-11);
   color: var(--muted);
   margin-top: 2px;
   display: flex;
@@ -3007,6 +3061,7 @@ body.page-chip-drop-new-group .main-content {
 /* ---- Empty state ---- */
 .deferred-empty {
   font-size: 13px;
+  font-size: var(--ui-font-13);
   color: var(--muted);
   font-style: italic;
   padding: 24px 0;
@@ -3030,6 +3085,7 @@ body.page-chip-drop-new-group .main-content {
 .archive-toggle {
   font-family: 'Public Sans', sans-serif;
   font-size: 12px;
+  font-size: var(--ui-font-12);
   font-weight: 500;
   color: var(--muted);
   background: none;
@@ -3060,6 +3116,7 @@ body.page-chip-drop-new-group .main-content {
 
 .archive-count {
   font-size: 11px;
+  font-size: var(--ui-font-11);
   color: var(--muted);
   opacity: 0.7;
 }
@@ -3071,6 +3128,7 @@ body.page-chip-drop-new-group .main-content {
 .archive-search {
   font-family: 'Public Sans', sans-serif;
   font-size: 12px;
+  font-size: var(--ui-font-12);
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--warm-gray);
@@ -3095,6 +3153,7 @@ body.page-chip-drop-new-group .main-content {
   background: transparent;
   color: var(--workspace-chip-text);
   font-size: 11px;
+  font-size: var(--ui-font-11);
   font-family: 'Public Sans', sans-serif;
   font-weight: 600;
   cursor: pointer;
@@ -3123,6 +3182,7 @@ body.page-chip-drop-new-group .main-content {
 
 .archive-item-title {
   font-size: 12px;
+  font-size: var(--ui-font-12);
   color: var(--muted);
   text-decoration: none;
   overflow: hidden;
@@ -3139,6 +3199,7 @@ body.page-chip-drop-new-group .main-content {
 
 .archive-item-date {
   font-size: 10px;
+  font-size: var(--ui-font-10);
   color: var(--muted);
   opacity: 0.6;
   flex-shrink: 0;
@@ -3257,6 +3318,7 @@ body.page-chip-drop-new-group .main-content {
 
 .todo-title {
   font-size: 14px;
+  font-size: var(--ui-font-14);
   font-weight: 400;
   line-height: 1.45;
   color: inherit;
@@ -3265,6 +3327,7 @@ body.page-chip-drop-new-group .main-content {
 .todo-meta,
 .todo-detail-meta {
   font-size: 11px;
+  font-size: var(--ui-font-11);
   color: var(--muted);
 }
 
@@ -3424,6 +3487,7 @@ body.page-chip-drop-new-group .main-content {
 
 .tab-picker-view-switch .drawer-title-btn {
   font-size: 16px;
+  font-size: var(--ui-font-16);
   line-height: 1.05;
   white-space: nowrap;
   flex: 1 1 0;
@@ -3458,6 +3522,7 @@ body.page-chip-drop-new-group .main-content {
   color: var(--ink);
   font: inherit;
   font-size: 13px;
+  font-size: var(--ui-font-13);
   outline: none;
 }
 
