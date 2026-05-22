@@ -1812,7 +1812,8 @@ body.group-dragging .group-nav-button {
 
 .chip-action::after,
 .group-action-icon::after,
-.section-icon-action::after {
+.section-icon-action::after,
+.todo-action-btn::after {
   content: attr(data-tooltip);
   position: absolute;
   left: 50%;
@@ -1840,7 +1841,9 @@ body.group-dragging .group-nav-button {
 .group-action-icon:hover::after,
 .group-action-icon:focus-visible::after,
 .section-icon-action:hover::after,
-.section-icon-action:focus-visible::after {
+.section-icon-action:focus-visible::after,
+.todo-action-btn:hover::after,
+.todo-action-btn:focus-visible::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
@@ -4037,6 +4040,40 @@ body.page-chip-drop-new-group .main-content {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  gap: 4px;
+}
+
+.todo-action-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.todo-action-btn:hover,
+.todo-action-btn:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--workspace-chip-bg) 82%, transparent);
+  border-color: color-mix(in srgb, var(--workspace-accent-border) 34%, transparent);
+}
+
+.todo-action-btn.todo-delete:hover,
+.todo-action-btn.todo-delete:focus-visible {
+  color: var(--accent-amber);
+}
+
+.todo-action-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .todo-title {
@@ -4107,6 +4144,7 @@ body.page-chip-drop-new-group .main-content {
   .theme-option,
   .theme-range,
   .todo-back-btn,
+  .todo-action-btn,
   .todo-checkbox,
   .todo-main,
   .workspace-page-switch-btn
@@ -4145,6 +4183,13 @@ body.page-chip-drop-new-group .main-content {
   color: var(--ink);
   line-height: 1.6;
   margin-bottom: 12px;
+}
+
+.todo-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
 }
 
 /* ---- Tab Picker Popover ---- */

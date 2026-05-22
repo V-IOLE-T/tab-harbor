@@ -843,6 +843,30 @@ test('drawer and search controls expose stronger accessibility semantics', () =>
   assert.match(html, /type="search"[\s\S]*id="todoSearchInput"[\s\S]*aria-label="Search todos"/);
 });
 
+test('drawer lives outside workspace pages so todos are global across pages', () => {
+  const homeStart = html.indexOf('<main class="workspace-page is-active" id="homePage"');
+  const homeEnd = html.indexOf('</main>', homeStart);
+  const savedStart = html.indexOf('<main class="workspace-page" id="savedTabsPage"');
+  const savedEnd = html.indexOf('</main>', savedStart);
+  const drawerIndex = html.indexOf('id="drawerColumn"');
+  const triggerIndex = html.indexOf('id="drawerTriggerStack"');
+
+  assert.ok(homeStart >= 0 && homeEnd > homeStart);
+  assert.ok(savedStart >= 0 && savedEnd > savedStart);
+  assert.ok(drawerIndex > homeEnd && drawerIndex > savedEnd);
+  assert.ok(triggerIndex > homeEnd && triggerIndex > savedEnd);
+});
+
+test('active todos expose edit and delete controls in list and detail views', () => {
+  assert.match(drawerJs, /data-action="edit-todo"[\s\S]*data-todo-id="\$\{todo\.id\}"/);
+  assert.match(drawerJs, /data-action="delete-todo"[\s\S]*data-todo-id="\$\{todo\.id\}"/);
+  assert.match(drawerJs, /function renderTodoDetail\(todo\)[\s\S]*data-action="edit-todo"[\s\S]*data-action="delete-todo"/);
+  assert.match(drawerJs, /class="todo-action-btn todo-edit"/);
+  assert.match(drawerJs, /class="todo-action-btn todo-delete"/);
+  assert.match(appJs, /if \(action === 'edit-todo'\)/);
+  assert.match(appJs, /if \(action === 'delete-todo'\)/);
+});
+
 test('interactive controls keep button semantics and reduced-motion support', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 

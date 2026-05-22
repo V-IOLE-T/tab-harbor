@@ -91,6 +91,41 @@
 
     </div><!-- end .dashboard-columns -->
 
+    <!-- ================================================================
+       FOOTER — global stats + refresh control
+       ================================================================ -->
+    <footer>
+      <div class="footer-stats">
+        <div class="stat">
+          <div class="stat-num" id="statTabs">—</div>
+          <div class="stat-label">Open tabs</div>
+        </div>
+      </div>
+      <div class="last-refresh">
+        <span class="footer-credit"><a class="footer-credit-link" href="https://github.com/V-IOLE-T/tab-harbor"
+            target="_top">Tab Harbor</a> by <a class="footer-credit-link" href="https://github.com/V-IOLE-T"
+            target="_top">OO</a></span>
+      </div>
+    </footer>
+    </main>
+
+    <main class="workspace-page" id="savedTabsPage" data-workspace-page="saved-tabs" hidden>
+      <div class="dashboard-columns saved-tabs-columns">
+        <section class="active-section saved-sessions-section">
+          <div class="section-header">
+            <h2>Saved sessions</h2>
+            <div class="section-line"></div>
+            <div class="section-count" id="savedSessionsCount"></div>
+          </div>
+          <div class="saved-sessions-list" id="savedSessionsList"></div>
+          <div class="saved-sessions-empty" id="savedSessionsEmpty" hidden>
+            No saved sessions yet. Save a window when you want the memory back without losing the trail.
+          </div>
+        </section>
+        <div class="page-header saved-tabs-header-spacer" aria-hidden="true"></div>
+      </div>
+    </main>
+
     <div class="drawer-trigger-stack" id="drawerTriggerStack">
       <button class="deferred-trigger" id="deferredTrigger" type="button" style="display:none" aria-expanded="false"
         aria-controls="drawerColumn" aria-label="Open saved for later">
@@ -156,15 +191,12 @@
               aria-label="Search saved pages">
           </div>
 
-          <!-- Active checklist items — injected by renderDeferredList() in app.js -->
           <div class="deferred-list" id="deferredList"></div>
 
-          <!-- Empty state — shown when no active deferred tabs -->
           <div class="deferred-empty" id="deferredEmpty" style="display:none">
             Nothing saved yet. Park articles and tabs here when they matter, just not right now.
           </div>
 
-          <!-- Archive section — collapsed by default -->
           <div class="deferred-archive" id="deferredArchive" style="display:none">
             <div class="archive-header-row">
               <button class="archive-toggle" id="archiveToggle" type="button" aria-expanded="false"
@@ -246,41 +278,6 @@
         </section>
       </div>
     </aside>
-
-    <!-- ================================================================
-       FOOTER — global stats + refresh control
-       ================================================================ -->
-    <footer>
-      <div class="footer-stats">
-        <div class="stat">
-          <div class="stat-num" id="statTabs">—</div>
-          <div class="stat-label">Open tabs</div>
-        </div>
-      </div>
-      <div class="last-refresh">
-        <span class="footer-credit"><a class="footer-credit-link" href="https://github.com/V-IOLE-T/tab-harbor"
-            target="_top">Tab Harbor</a> by <a class="footer-credit-link" href="https://github.com/V-IOLE-T"
-            target="_top">OO</a></span>
-      </div>
-    </footer>
-    </main>
-
-    <main class="workspace-page" id="savedTabsPage" data-workspace-page="saved-tabs" hidden>
-      <div class="dashboard-columns saved-tabs-columns">
-        <section class="active-section saved-sessions-section">
-          <div class="section-header">
-            <h2>Saved sessions</h2>
-            <div class="section-line"></div>
-            <div class="section-count" id="savedSessionsCount"></div>
-          </div>
-          <div class="saved-sessions-list" id="savedSessionsList"></div>
-          <div class="saved-sessions-empty" id="savedSessionsEmpty" hidden>
-            No saved sessions yet. Save a window when you want the memory back without losing the trail.
-          </div>
-        </section>
-        <div class="page-header saved-tabs-header-spacer" aria-hidden="true"></div>
-      </div>
-    </main>
 
   </div><!-- end .container -->
 

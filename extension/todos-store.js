@@ -35,19 +35,30 @@
   }
 
   function updateTodo(todos, id, updates = {}) {
+    const hasTitle = Object.prototype.hasOwnProperty.call(updates, 'title');
+    const cleanTitle = hasTitle ? String(updates.title || '').trim() : '';
+    const hasDescription = Object.prototype.hasOwnProperty.call(updates, 'description');
+    const cleanDescription = hasDescription ? String(updates.description || '').trim() : '';
+
+    if (hasTitle && !cleanTitle) throw new Error('Todo title is required');
+
     return normalizeTodos(todos).map(todo => {
       if (todo.id !== String(id)) return todo;
-      return {
-        ...todo,
-        ...updates,
-      };
+      const nextTodo = { ...todo };
+      if (hasTitle) nextTodo.title = cleanTitle;
+      if (hasDescription) nextTodo.description = cleanDescription;
+      return nextTodo;
     });
   }
 
   function completeTodo(todos, id) {
-    return updateTodo(todos, id, {
-      completed: true,
-      completedAt: new Date().toISOString(),
+    return normalizeTodos(todos).map(todo => {
+      if (todo.id !== String(id)) return todo;
+      return {
+        ...todo,
+        completed: true,
+        completedAt: new Date().toISOString(),
+      };
     });
   }
 

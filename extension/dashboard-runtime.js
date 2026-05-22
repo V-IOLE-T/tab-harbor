@@ -3709,6 +3709,25 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  if (action === 'edit-todo') {
+    const id = actionEl.dataset.todoId;
+    if (!id) return;
+    const todos = await getTodos();
+    const todo = todos.find(item => item.id === id && !item.dismissed);
+    if (!todo) return;
+    const title = window.prompt(runtimeT ? runtimeT('promptTodoTitle') : 'Todo title', todo.title);
+    if (title === null || !title.trim()) return;
+    const description = window.prompt(
+      runtimeT ? runtimeT('promptTodoDetails') : 'Todo details (optional)',
+      todo.description || ''
+    );
+    if (description === null) return;
+    await updateTodoItem(id, { title, description });
+    showToast(runtimeT ? runtimeT('toastTodoUpdated') : 'Todo updated');
+    await renderDeferredColumn();
+    return;
+  }
+
   if (action === 'open-todo-detail') {
     todoDetailId = actionEl.dataset.todoId || '';
     await renderDeferredColumn();
@@ -3726,6 +3745,16 @@ document.addEventListener('click', async (e) => {
     if (!id) return;
     await completeTodoItem(id);
     if (todoDetailId === id) todoDetailId = '';
+    await renderDeferredColumn();
+    return;
+  }
+
+  if (action === 'delete-todo') {
+    const id = actionEl.dataset.todoId;
+    if (!id) return;
+    await deleteTodoItem(id);
+    if (todoDetailId === id) todoDetailId = '';
+    showToast(runtimeT ? runtimeT('toastTodoDeleted') : 'Todo deleted');
     await renderDeferredColumn();
     return;
   }

@@ -19,6 +19,7 @@ const {
   normalizeTodos: drawerNormalizeTodos,
   searchTodos: drawerSearchTodos,
   splitTodos: drawerSplitTodos,
+  updateTodo: drawerUpdateTodo,
 } = globalThis.TabOutTodosStore || {};
 
 let deferredPanelOpen = false;
@@ -168,6 +169,11 @@ async function deleteTodoItem(id) {
   return saveTodos(drawerDeleteTodo(todos, id));
 }
 
+async function updateTodoItem(id, payload) {
+  const todos = await getTodos();
+  return saveTodos(drawerUpdateTodo(todos, id, payload));
+}
+
 async function clearTodoArchiveItems() {
   const todos = await getTodos();
   return saveTodos(drawerClearArchivedTodos(todos));
@@ -202,6 +208,12 @@ function renderTodoListItem(todo, { dragEnabled = true } = {}) {
         <span class="todo-meta">${ago}</span>
       </button>
       <div class="todo-actions">
+        <button class="todo-action-btn todo-edit" type="button" data-action="edit-todo" data-todo-id="${todo.id}" aria-label="Edit todo" data-tooltip="Edit todo">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.9" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+        </button>
+        <button class="todo-action-btn todo-delete" type="button" data-action="delete-todo" data-todo-id="${todo.id}" aria-label="Delete todo" data-tooltip="Delete todo">
+          ${ICONS.close}
+        </button>
         ${dragHandle}
       </div>
     </div>`;
@@ -218,6 +230,14 @@ function renderTodoDetail(todo) {
         <h3>${drawerEscapeHtml ? drawerEscapeHtml(todo.title) : todo.title}</h3>
         <p>${drawerEscapeHtml ? drawerEscapeHtml(todo.description || 'Add a note when this task needs more context.') : (todo.description || 'Add a note when this task needs more context.')}</p>
         <div class="todo-detail-meta">Created ${timeAgo(todo.createdAt)}</div>
+        <div class="todo-detail-actions">
+          <button class="todo-action-btn todo-edit" type="button" data-action="edit-todo" data-todo-id="${todo.id}" aria-label="Edit todo" data-tooltip="Edit todo">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.9" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+          </button>
+          <button class="todo-action-btn todo-delete" type="button" data-action="delete-todo" data-todo-id="${todo.id}" aria-label="Delete todo" data-tooltip="Delete todo">
+            ${ICONS.close}
+          </button>
+        </div>
       </div>
     </div>`;
 }
