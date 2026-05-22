@@ -996,11 +996,14 @@ test('chrome tab group mode stays active while the toggle is on', () => {
   );
 });
 
-test('discard tab renders sleep button on inactive tabs with visual styling and full re-render', () => {
+test('discard tab supports per-chip, group-level, and global sleep-all with gated visibility', () => {
   assert.match(runtimeJs, /async function discardTab\(tabId\)\s*\{[\s\S]*chrome\.tabs\.discard\(/);
   assert.match(runtimeJs, /data-action="discard-tab"/);
+  assert.match(runtimeJs, /data-action="sleep-domain-tabs"/);
+  assert.match(runtimeJs, /data-action="sleep-all-open-tabs"/);
   assert.match(runtimeJs, /page-chip--discarded/);
   assert.match(runtimeJs, /if \(action === 'discard-tab'\)\s*\{[\s\S]*await fetchOpenTabs\(\);[\s\S]*await renderDashboard\(\);/);
+  assert.match(runtimeJs, /if \(action === 'sleep-domain-tabs'\)\s*\{[\s\S]*await fetchOpenTabs\(\);[\s\S]*await renderDashboard\(\);/);
 
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
   assert.match(css, /\.chip-discard:hover\s*\{[\s\S]*color:\s*var\(--muted\);/);

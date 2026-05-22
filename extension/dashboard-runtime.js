@@ -134,6 +134,7 @@ let pageChipDragState = null;
 let pageChipPlaceholderEl = null;
 let pageChipNewGroupSlotEl = null;
 let chromeTabGroupsEnabled = false;
+let sleepControlEnabled = false;
 let importedChromeGroupMeta = normalizeChromeImportedGroupMeta
   ? normalizeChromeImportedGroupMeta(runtimeEmptyChromeImportedMeta)
   : { entries: [] };
@@ -2347,9 +2348,9 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
         <button class="chip-action chip-save" type="button" data-action="defer-single-tab" data-tab-id="${safeTabId}" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" aria-label="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}" data-tooltip="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        ${!tab.active ? `
-        <button class="chip-action chip-discard" type="button" data-action="discard-tab" data-tab-id="${tab.id}" aria-label="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}" title="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 0 1 8.646 3.646 9.003 9.003 0 0 0 12 21a9.003 9.003 0 0 0 8.354-5.646z" /></svg>
+        ${sleepControlEnabled && !tab.active ? `
+        <button class="chip-action chip-discard" type="button" data-action="discard-tab" data-tab-id="${tab.id}" aria-label="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}" data-tooltip="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}">
+          ${ICONS.moon}
         </button>
         ` : ''}
         <button class="chip-action chip-close" type="button" data-action="close-single-tab" data-tab-id="${safeTabId}" data-tab-url="${safeUrl}" aria-label="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}" data-tooltip="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}">
@@ -2443,8 +2444,8 @@ function renderDomainCard(group) {
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-id="${tab.id}" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" aria-label="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}" data-tooltip="${runtimeT ? runtimeT('saveForLater') : 'Save for later'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        ${!tab.active ? `<button class="chip-action chip-discard" data-action="discard-tab" data-tab-id="${tab.id}" title="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 0 1 8.646 3.646 9.003 9.003 0 0 0 12 21a9.003 9.003 0 0 0 8.354-5.646z" /></svg>
+        ${sleepControlEnabled && !tab.active ? `<button class="chip-action chip-discard" data-action="discard-tab" data-tab-id="${tab.id}" aria-label="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}" data-tooltip="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}">
+          ${ICONS.moon}
         </button>` : ''}
         <button class="chip-action chip-close" data-action="close-single-tab" data-tab-id="${tab.id}" data-tab-url="${safeUrl}" aria-label="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}" data-tooltip="${runtimeT ? runtimeT('closeThisTab') : 'Close this tab'}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
@@ -2493,6 +2494,10 @@ function renderDomainCard(group) {
             ${dupeBadge}
           </div>
           <div class="mission-actions">
+            ${sleepControlEnabled ? `
+            <button class="group-action-icon" type="button" data-action="sleep-domain-tabs" data-domain-id="${stableId}" aria-label="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs in group'}" data-tooltip="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs in group'}">
+              ${ICONS.moon}
+            </button>` : ''}
             ${saveGroupButton}
             ${closeAllButton}
           </div>
@@ -2648,6 +2653,12 @@ function renderWorkspaceThemeTools() {
             <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('hitokotoLabel') : '一言'}</span>
           </label>
         </div>
+        <div class="theme-menu-section">
+          <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
+            <button class="theme-toggle-switch ${sleepControlEnabled ? 'is-active' : ''}" type="button" data-action="toggle-sleep-control" aria-pressed="${sleepControlEnabled ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('sleepControlLabel') : 'Manual sleep control'}"></button>
+            <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('sleepControlLabel') : 'Manual sleep control'}</span>
+          </label>
+        </div>
         <input type="file" id="themeBackgroundInput" accept="image/*" hidden>
       </div>
     </div>`;
@@ -2692,6 +2703,7 @@ function renderOpenTabsSummary(realTabs = getRealTabs()) {
     if (openTabsSectionTitle) openTabsSectionTitle.textContent = runtimeT ? runtimeT('openTabsSectionTitle') : 'Open tabs';
     if (openTabsSectionCount) {
       openTabsSectionCount.innerHTML = `
+        ${sleepControlEnabled ? `<button class="section-icon-action" type="button" data-action="sleep-all-open-tabs" aria-label="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs'}" data-tooltip="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs'}">${ICONS.moon}</button>` : ''}
         <button class="section-icon-action" type="button" data-action="save-current-window-session" aria-label="${runtimeT ? runtimeT('saveSessionButton') : 'Save session'}" data-tooltip="${runtimeT ? runtimeT('saveSessionButton') : 'Save session'}">${ICONS.archive}</button>
         <button class="section-icon-action section-icon-action-close" type="button" data-action="close-all-open-tabs" aria-label="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}" data-tooltip="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}">${ICONS.close}</button>`;
     }
@@ -2918,6 +2930,7 @@ function renderOpenTabsArea(realTabs = getRealTabs()) {
     if (openTabsSectionTitle) openTabsSectionTitle.textContent = runtimeT ? runtimeT('openTabsSectionTitle') : 'Open tabs';
     if (openTabsSectionCount) {
       openTabsSectionCount.innerHTML = `
+        ${sleepControlEnabled ? `<button class="section-icon-action" type="button" data-action="sleep-all-open-tabs" aria-label="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs'}" data-tooltip="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs'}">${ICONS.moon}</button>` : ''}
         <button class="section-icon-action" type="button" data-action="save-current-window-session" aria-label="${runtimeT ? runtimeT('saveSessionButton') : 'Save session'}" data-tooltip="${runtimeT ? runtimeT('saveSessionButton') : 'Save session'}">${ICONS.archive}</button>
         <button class="section-icon-action section-icon-action-close" type="button" data-action="close-all-open-tabs" aria-label="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}" data-tooltip="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}">${ICONS.close}</button>`;
     }
@@ -3183,6 +3196,14 @@ document.addEventListener('click', async (e) => {
       toggleSwitch.classList.toggle('is-active', nextEnabled);
       toggleSwitch.setAttribute('aria-pressed', String(nextEnabled));
     }
+    return;
+  }
+
+  if (action === 'toggle-sleep-control') {
+    const nextEnabled = sleepControlEnabled !== true;
+    await saveThemePreferences({ sleepControlEnabled: nextEnabled });
+    sleepControlEnabled = nextEnabled;
+    await renderDashboard();
     return;
   }
 
@@ -3538,6 +3559,58 @@ document.addEventListener('click', async (e) => {
       console.error('[tab-harbor] Failed to save group session:', err);
       showToast(runtimeT ? runtimeT('toastSessionActionFailed') : 'Could not update saved tabs');
     }
+    return;
+  }
+
+  // ---- Sleep all tabs in a domain group ----
+  if (action === 'sleep-domain-tabs') {
+    const domainId = actionEl.dataset.domainId || '';
+    const group = domainGroups.find(g => getStableGroupId(g.domain) === domainId);
+    if (!group) return;
+
+    const tabs = getOrderedUniqueTabsForGroup(group).filter(t => !t.active);
+    if (!tabs.length) return;
+
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
+
+    const results = await Promise.all(tabs.map(t => discardTab(t.id)));
+    const succeeded = results.filter(Boolean).length;
+    if (!succeeded) {
+      showToast(runtimeT ? runtimeT('toastTabDiscardFailed') || 'Failed to sleep tabs' : 'Failed to sleep tabs');
+      return;
+    }
+
+    await fetchOpenTabs();
+    await loadSessionGroups(openTabs.map(tab => tab.id));
+    await renderDashboard();
+
+    showToast(runtimeT
+      ? runtimeT('toastTabsDiscarded', { count: succeeded })
+      : `${succeeded} tabs sleeping`);
+    return;
+  }
+
+  // ---- Sleep all open tabs ----
+  if (action === 'sleep-all-open-tabs') {
+    const allTabs = getRealTabs().filter(t => !t.active);
+    if (!allTabs.length) return;
+
+    window.__suppressAutoRefreshUntil = Date.now() + 2000;
+
+    const results = await Promise.all(allTabs.map(t => discardTab(t.id)));
+    const succeeded = results.filter(Boolean).length;
+    if (!succeeded) {
+      showToast(runtimeT ? runtimeT('toastTabDiscardFailed') || 'Failed to sleep tabs' : 'Failed to sleep tabs');
+      return;
+    }
+
+    await fetchOpenTabs();
+    await loadSessionGroups(openTabs.map(tab => tab.id));
+    await renderDashboard();
+
+    showToast(runtimeT
+      ? runtimeT('toastTabsDiscarded', { count: succeeded })
+      : `${succeeded} tabs sleeping`);
     return;
   }
 
@@ -4263,6 +4336,7 @@ async function initializeDashboardRuntime() {
   injectDynamicAnimationStyles();
   primeEntryAnimations();
   await loadThemePreferences();
+  sleepControlEnabled = (typeof themePreferences !== 'undefined' && themePreferences.sleepControlEnabled === true);
   if (typeof loadChromeTabGroupsSetting === 'function') {
     chromeTabGroupsEnabled = await loadChromeTabGroupsSetting();
   }

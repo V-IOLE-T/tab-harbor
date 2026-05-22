@@ -248,6 +248,7 @@ let themePreferences = {
   uiScale: 100,
   shortcutScale: 100,
   hitokotoEnabled: true,
+  sleepControlEnabled: false,
   savedSessionRestoreMode: 'new-window',
   savedSessionNavDisplayMode: 'name',
 };
@@ -283,6 +284,7 @@ function normalizeThemePreferences(input) {
     uiScale,
     shortcutScale,
     hitokotoEnabled: next.hitokotoEnabled !== false,
+    sleepControlEnabled: next.sleepControlEnabled === true,
     savedSessionRestoreMode: VALID_SAVED_SESSION_RESTORE_MODES.has(rawSavedSessionRestoreMode) ? rawSavedSessionRestoreMode : 'new-window',
     savedSessionNavDisplayMode: VALID_SAVED_SESSION_NAV_DISPLAY_MODES.has(rawSavedSessionNavDisplayMode) ? rawSavedSessionNavDisplayMode : 'name',
   };

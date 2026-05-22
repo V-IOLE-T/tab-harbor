@@ -1702,6 +1702,7 @@ body.group-dragging .group-nav-button {
   background: rgba(179, 90, 90, 0.08);
 }
 
+
 .chip-discard:hover {
   color: var(--muted);
   background: rgba(114, 107, 203, 0.08);
