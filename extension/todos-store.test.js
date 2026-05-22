@@ -11,6 +11,7 @@ const {
   normalizeTodos,
   searchTodos,
   splitTodos,
+  updateTodo,
 } = require('./todos-store.js');
 
 test('createTodo adds a new active todo with title and description', () => {
@@ -59,6 +60,44 @@ test('deleteTodo hides a todo from both active and archive views', () => {
   const { active, archived } = splitTodos(todos);
   assert.equal(active.length, 0);
   assert.equal(archived.length, 0);
+});
+
+test('updateTodo edits title and description without changing completion state', () => {
+  const todos = updateTodo([
+    {
+      id: 'todo-1',
+      title: 'Review notes',
+      description: 'Old context',
+      createdAt: '2026-04-16T00:00:00.000Z',
+      completed: true,
+      completedAt: '2026-04-16T01:00:00.000Z',
+      dismissed: false,
+    },
+  ], 'todo-1', {
+    title: '  Review launch notes  ',
+    description: '  New context  ',
+    completed: false,
+    dismissed: true,
+  });
+
+  assert.equal(todos[0].title, 'Review launch notes');
+  assert.equal(todos[0].description, 'New context');
+  assert.equal(todos[0].completed, true);
+  assert.equal(todos[0].dismissed, false);
+});
+
+test('updateTodo rejects an empty title', () => {
+  assert.throws(() => updateTodo([
+    {
+      id: 'todo-1',
+      title: 'Review notes',
+      description: '',
+      createdAt: '2026-04-16T00:00:00.000Z',
+      completed: false,
+      completedAt: null,
+      dismissed: false,
+    },
+  ], 'todo-1', { title: '   ' }), /Todo title is required/);
 });
 
 test('clearArchivedTodos removes all archived todos but keeps active ones', () => {

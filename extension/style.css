@@ -1812,7 +1812,8 @@ body.group-dragging .group-nav-button {
 
 .chip-action::after,
 .group-action-icon::after,
-.section-icon-action::after {
+.section-icon-action::after,
+.todo-action-btn::after {
   content: attr(data-tooltip);
   position: absolute;
   left: 50%;
@@ -1840,7 +1841,9 @@ body.group-dragging .group-nav-button {
 .group-action-icon:hover::after,
 .group-action-icon:focus-visible::after,
 .section-icon-action:hover::after,
-.section-icon-action:focus-visible::after {
+.section-icon-action:focus-visible::after,
+.todo-action-btn:hover::after,
+.todo-action-btn:focus-visible::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }
@@ -3634,6 +3637,23 @@ body.entry-animations-enabled .deferred-column .section-header { animation: fade
   height: 14px;
 }
 
+.todo-reorder-handle {
+  width: 30px;
+  height: 30px;
+  color: color-mix(in srgb, var(--ink) 84%, var(--muted) 16%);
+}
+
+.todo-reorder-handle:hover,
+.todo-reorder-handle:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--workspace-chip-bg) 76%, transparent);
+}
+
+.todo-reorder-handle svg {
+  width: 16px;
+  height: 16px;
+}
+
 body.drawer-list-dragging {
   cursor: grabbing;
   user-select: none;
@@ -4037,6 +4057,40 @@ body.page-chip-drop-new-group .main-content {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  gap: 4px;
+}
+
+.todo-action-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.todo-action-btn:hover,
+.todo-action-btn:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--workspace-chip-bg) 82%, transparent);
+  border-color: color-mix(in srgb, var(--workspace-accent-border) 34%, transparent);
+}
+
+.todo-action-btn.todo-delete:hover,
+.todo-action-btn.todo-delete:focus-visible {
+  color: var(--accent-amber);
+}
+
+.todo-action-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .todo-title {
@@ -4106,7 +4160,9 @@ body.page-chip-drop-new-group .main-content {
   .theme-menu-action,
   .theme-option,
   .theme-range,
+  .todo-editor-input,
   .todo-back-btn,
+  .todo-action-btn,
   .todo-checkbox,
   .todo-main,
   .workspace-page-switch-btn
@@ -4128,6 +4184,94 @@ body.page-chip-drop-new-group .main-content {
   box-shadow: none;
 }
 
+.todo-editor-view {
+  margin: 2px 0 14px;
+}
+
+.todo-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent-border) 22%, var(--warm-gray) 78%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card-bg) 94%, var(--paper) 6%);
+  padding: 14px;
+}
+
+.todo-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.todo-editor-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-size: var(--ui-font-15);
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.todo-editor-field {
+  display: grid;
+  gap: 6px;
+}
+
+.todo-editor-label {
+  font-size: 10px;
+  font-size: var(--ui-font-10);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.todo-editor-input {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent-border) 24%, var(--warm-gray) 76%);
+  background: color-mix(in srgb, var(--card-bg) calc(var(--custom-surface-opacity) + 74%), transparent);
+  color: var(--ink);
+  font: inherit;
+  padding: 0 12px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.todo-editor-input:focus {
+  border-color: color-mix(in srgb, var(--accent-amber) 54%, var(--workspace-accent-border) 46%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-amber) 18%, transparent);
+}
+
+.todo-editor-input::placeholder {
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+}
+
+.todo-editor-textarea {
+  min-height: 104px;
+  resize: vertical;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+.todo-editor-error {
+  min-height: 16px;
+  color: var(--accent-amber);
+  font-size: 11px;
+  font-size: var(--ui-font-11);
+  line-height: 1.35;
+}
+
+.todo-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .todo-detail-card {
   border: 1px solid rgba(154, 145, 138, 0.12);
   border-radius: 12px;
@@ -4145,6 +4289,13 @@ body.page-chip-drop-new-group .main-content {
   color: var(--ink);
   line-height: 1.6;
   margin-bottom: 12px;
+}
+
+.todo-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
 }
 
 /* ---- Tab Picker Popover ---- */
