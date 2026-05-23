@@ -458,6 +458,31 @@ test('renderTabGroup renders fallback favicon when no faviconUrl', () => {
   assert.ok(html.includes('popup-tab-favicon-fallback'));
 });
 
+test('renderTabGroup includes fallback queue on favicon images', () => {
+  _restorePopupIcons();
+  try {
+    globalThis._popupIcons.getIconSources = () => ({
+      sources: [
+        'chrome-extension://abc/_favicon/?pageUrl=https%3A%2F%2Fexample.com&size=16',
+        'https://example.com/favicon.ico',
+        'https://fallback.example.com/favicon.ico',
+      ],
+      hostname: 'example.com',
+    });
+    const group = {
+      domain: 'example.com',
+      label: 'Example',
+      kind: 'domain',
+      tabs: [{ id: 3, url: 'https://example.com', title: 'Example' }],
+    };
+    const html = renderTabGroup(group, 0);
+    assert.ok(html.includes('data-fallback-src="https://example.com/favicon.ico"'));
+    assert.ok(html.includes('data-fallback-srcset="[&quot;https://fallback.example.com/favicon.ico&quot;]"'));
+  } finally {
+    _restorePopupIcons();
+  }
+});
+
 test('renderTabGroup sets correct CSS custom properties', () => {
   const group = {
     domain: 'test.com',

@@ -1305,15 +1305,12 @@ function renderQuickShortcutCard(shortcut) {
   const label = getShortcutLabel(shortcut);
   const safeLabel = themeEscapeHtml ? themeEscapeHtml(label) : label;
   const safeAriaLabel = themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(label) : label.replace(/"/g, '&quot;');
-  const iconData = themeGetIconSources({ url: shortcut.url, title: label }, 32);
+  const iconData = themeGetIconSources ? themeGetIconSources({ url: shortcut.url }, 32) : { sources: [], hostname: '' };
   const faviconUrl = iconData.sources[0] || '';
-  const fallbackUrl = iconData.sources[1] || '';
   const fallbackLabel = themeGetFallbackLabel(label, iconData.hostname);
   const safeId = themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(shortcut.id) : shortcut.id.replace(/"/g, '&quot;');
   const safeUrl = themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(shortcut.url) : shortcut.url.replace(/"/g, '&quot;');
   const customIcon = normalizeShortcutIcon(shortcut.icon);
-  const iconErrorFallback = (customIcon.kind === 'image' || customIcon.kind === 'svg') ? (faviconUrl || fallbackUrl) : fallbackUrl;
-  const safeIconErrorFallback = themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(iconErrorFallback) : iconErrorFallback.replace(/"/g, '&quot;');
   const primaryIconUrl = customIcon.kind === 'image'
     ? customIcon.value
     : customIcon.kind === 'svg'
@@ -1322,12 +1319,21 @@ function renderQuickShortcutCard(shortcut) {
         ? ''
         : faviconUrl;
   const glyphIcon = customIcon.kind === 'glyph' ? customIcon.value : '';
+  const fallbackSources = (customIcon.kind === 'image' || customIcon.kind === 'svg')
+    ? iconData.sources
+    : iconData.sources.slice(1);
+  const iconErrorFallback = fallbackSources[0] || '';
+  const safeIconErrorFallback = themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(iconErrorFallback) : iconErrorFallback.replace(/"/g, '&quot;');
+  const fallbackSrcset = fallbackSources.length > 1 ? JSON.stringify(fallbackSources.slice(1)) : '';
+  const safeFallbackSrcset = fallbackSrcset
+    ? (themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(fallbackSrcset) : fallbackSrcset.replace(/"/g, '&quot;'))
+    : '';
 
   return `
     <div class="quick-shortcut-card" data-shortcut-id="${safeId}">
       <button class="quick-shortcut-open" type="button" data-action="open-quick-shortcut" data-shortcut-url="${safeUrl}" aria-label="${safeAriaLabel}" draggable="false">
         <span class="quick-shortcut-icon-wrap">
-          ${primaryIconUrl ? `<img class="quick-shortcut-icon${customIcon.kind === 'image' ? ' quick-shortcut-icon-custom' : ''}" src="${primaryIconUrl}" alt="" draggable="false" data-fallback-src="${safeIconErrorFallback}">` : ''}
+          ${primaryIconUrl ? `<img class="quick-shortcut-icon${customIcon.kind === 'image' ? ' quick-shortcut-icon-custom' : ''}" src="${primaryIconUrl}" alt="" draggable="false" data-fallback-src="${safeIconErrorFallback}"${safeFallbackSrcset ? ` data-fallback-srcset="${safeFallbackSrcset}"` : ''}>` : ''}
           ${glyphIcon ? `<span class="quick-shortcut-custom-glyph" aria-hidden="true">${glyphIcon}</span>` : ''}
           <span class="quick-shortcut-fallback"${primaryIconUrl || glyphIcon ? ' style="display:none"' : ''}>${fallbackLabel}</span>
         </span>

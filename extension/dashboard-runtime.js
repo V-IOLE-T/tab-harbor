@@ -1383,12 +1383,15 @@ function renderTabSessionPicker(groups = tabSessionPickerState.groups) {
               const iconData = runtimeGetIconSources ? runtimeGetIconSources(tab, 16) : { sources: [], hostname: '' };
               const faviconUrl = iconData.sources?.[0] || '';
               const fallbackUrl = iconData.sources?.[1] || '';
+              const fallbackSrcset = iconData.sources?.length > 2
+                ? (runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(JSON.stringify(iconData.sources.slice(2))) : JSON.stringify(iconData.sources.slice(2)).replace(/"/g, '&quot;'))
+                : '';
               const fallbackLabel = runtimeGetFallbackLabel ? runtimeGetFallbackLabel(tab.title || tab.url || '', iconData.hostname || '') : '?';
               return `
                 <label class="session-picker-tab-row">
                   <input type="checkbox" data-action="toggle-session-picker-tab" data-tab-id="${safeTabId}"${selectedIds.has(tabId) ? ' checked' : ''}>
                   <span class="session-picker-tab-title">
-                    ${faviconUrl ? `<img src="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(faviconUrl) : faviconUrl}" alt="" data-fallback-src="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(fallbackUrl) : fallbackUrl}">` : ''}
+                    ${faviconUrl ? `<img src="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(faviconUrl) : faviconUrl}" alt="" data-fallback-src="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(fallbackUrl) : fallbackUrl}"${fallbackSrcset ? ` data-fallback-srcset="${fallbackSrcset}"` : ''}>` : ''}
                     <span class="inline-favicon-fallback"${faviconUrl ? ' style="display:none"' : ''}>${runtimeEscapeHtml ? runtimeEscapeHtml(fallbackLabel) : fallbackLabel}</span>
                     <span>${safeTitle}</span>
                   </span>
