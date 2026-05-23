@@ -1307,7 +1307,7 @@ function renderQuickShortcutCard(shortcut) {
   const label = getShortcutLabel(shortcut);
   const safeLabel = themeEscapeHtml ? themeEscapeHtml(label) : label;
   const safeAriaLabel = themeEscapeHtmlAttribute ? themeEscapeHtmlAttribute(label) : label.replace(/"/g, '&quot;');
-  const faviconData = themeGetFaviconUrl({ domain: shortcut.url, size: 32 });
+  const faviconData = themeGetFaviconUrl ? themeGetFaviconUrl({ domain: shortcut.url, size: 32 }) : { url: '', fallback: '' };
   const faviconUrl = faviconData.url || '';
   const fallbackUrl = faviconData.fallback || '';
   const hostname = themeGetHostname ? themeGetHostname(shortcut.url) : '';

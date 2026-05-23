@@ -68,10 +68,25 @@ test('getIconSources skips unstable browser internal favicon urls', () => {
   ]);
 });
 
-test('getFaviconUrl builds fallback URL from URL string input', () => {
+test('getFaviconUrl builds fallback URL from URL string input (no chrome runtime)', () => {
   const result = getFaviconUrl('https://www.example.com/page');
-  assert.equal(result.source, 'chrome');
+  assert.equal(result.source, '');
+  assert.equal(result.url, '');
   assert.equal(result.fallback, 'https://www.example.com/favicon.ico');
+});
+
+test('getFaviconUrl returns empty result for empty input', () => {
+  const result = getFaviconUrl({});
+  assert.equal(result.url, '');
+  assert.equal(result.source, '');
+  assert.equal(result.fallback, '');
+});
+
+test('getFaviconUrl returns empty result for non-HTTP URL', () => {
+  const result = getFaviconUrl('chrome://extensions/');
+  assert.equal(result.url, '');
+  assert.equal(result.source, '');
+  assert.equal(result.fallback, '');
 });
 
 test('getFaviconUrl builds fallback URL from options object', () => {

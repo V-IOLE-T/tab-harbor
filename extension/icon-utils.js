@@ -80,23 +80,43 @@
   }
 
   function getFaviconUrl(input) {
-    const rawUrl = typeof input === 'string' ? input : input.domain;
-    const size = typeof input === 'string' ? 128 : (input.size ?? 128);
+    const rawUrl = typeof input === 'string' ? input : (input?.domain ?? '');
+    if (!rawUrl) return { url: '', source: '', fallback: '' };
 
-    const cleanDomain = rawUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const size = typeof input === 'string' ? 128 : (input?.size ?? 128);
+
+    let protocol, hostname, pageUrl;
+    try {
+      const parsed = new URL(rawUrl);
+      protocol = parsed.protocol;
+      hostname = parsed.hostname;
+      pageUrl = rawUrl;
+    } catch {
+      if (/^[a-zA-Z0-9.-]+$/.test(rawUrl) && rawUrl.includes('.')) {
+        protocol = 'https:';
+        hostname = rawUrl;
+        pageUrl = `https://${rawUrl}`;
+      } else {
+        return { url: '', source: '', fallback: '' };
+      }
+    }
+
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return { url: '', source: '', fallback: '' };
+    }
 
     const faviconBase = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
       ? chrome.runtime.getURL('_favicon/')
       : '';
     const chromeUrl = faviconBase
-      ? `${faviconBase}?pageUrl=${encodeURIComponent(rawUrl)}&size=${size}`
+      ? `${faviconBase}?pageUrl=${encodeURIComponent(pageUrl)}&size=${size}`
       : '';
 
-    const fallbackUrl = `https://${cleanDomain}/favicon.ico`;
+    const fallbackUrl = `https://${hostname}/favicon.ico`;
 
     return {
       url: chromeUrl,
-      source: 'chrome',
+      source: chromeUrl ? 'chrome' : '',
       fallback: fallbackUrl,
     };
   }
