@@ -189,6 +189,7 @@ function revealImageFallback(imgEl) {
     sibling.classList.contains('group-nav-fallback') ||
     sibling.classList.contains('chip-favicon-fallback') ||
     sibling.classList.contains('inline-favicon-fallback') ||
+    sibling.classList.contains('popup-tab-favicon-fallback') ||
     sibling.classList.contains('quick-shortcut-fallback') ||
     sibling.classList.contains('tab-picker-favicon-fallback')
   ) {

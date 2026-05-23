@@ -181,7 +181,15 @@ function reorderGroupTabsByStoredUrls(tabs, groupKey) {
 
 function getOrderedUniqueTabsForGroup(group) {
   const tabs = Array.isArray(group?.tabs) ? group.tabs : [];
-  return reorderGroupTabsByStoredUrls(tabs, group?.domain);
+  const orderedTabs = reorderGroupTabsByStoredUrls(tabs, group?.domain);
+  const seenUrls = new Set();
+  return orderedTabs.filter(tab => {
+    const url = String(tab?.url || '').trim();
+    if (!url) return true;
+    if (seenUrls.has(url)) return false;
+    seenUrls.add(url);
+    return true;
+  });
 }
 
 async function loadPopupState() {
@@ -322,9 +330,8 @@ function renderPopupShortcuts() {
 function renderShortcutCard(shortcut, index) {
   const label = shortcut.label || shortcut.url;
   const iconKind = String(shortcut.iconKind || '');
-  const faviconData = popupIcons.getFaviconUrl ? popupIcons.getFaviconUrl({ domain: shortcut.url, size: 32 }) : { url: '', fallback: '' };
-  const hostname = popupIcons.getHostname ? popupIcons.getHostname(shortcut.url) : '';
-  const fallbackLabel = popupIcons.getFallbackLabel ? popupIcons.getFallbackLabel(label, hostname) : label.slice(0, 1).toUpperCase();
+  const iconData = popupIcons.getIconSources ? popupIcons.getIconSources({ url: shortcut.url }, 32) : { sources: [], hostname: '' };
+  const fallbackLabel = popupIcons.getFallbackLabel ? popupIcons.getFallbackLabel(label, iconData.hostname) : label.slice(0, 1).toUpperCase();
   const safeUrl = escapeAttr(shortcut.url);
   const safeLabel = escapeAttr(label);
   const primaryIconUrl = iconKind === 'image'
@@ -333,14 +340,19 @@ function renderShortcutCard(shortcut, index) {
       ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(shortcut.icon || '')}`
       : iconKind === 'glyph'
         ? ''
-        : (faviconData.url || '');
+        : (iconData.sources[0] || '');
   const glyph = iconKind === 'glyph' ? shortcut.icon : '';
+  const fallbackSources = (iconKind === 'image' || iconKind === 'svg')
+    ? iconData.sources
+    : iconData.sources.slice(1);
+  const fallbackSrc = escapeAttr(fallbackSources[0] || '');
+  const fallbackSrcset = fallbackSources.length > 1 ? escapeAttr(JSON.stringify(fallbackSources.slice(1))) : '';
 
   return `
     <div class="quick-shortcut-card popup-shortcut-card" style="--s:${index}">
       <button class="quick-shortcut-open" type="button" data-action="open-popup-url" data-url="${safeUrl}" aria-label="${safeLabel}">
         <span class="quick-shortcut-icon-wrap">
-          ${primaryIconUrl ? `<img class="quick-shortcut-icon${iconKind === 'image' ? ' quick-shortcut-icon-custom' : ''}" src="${primaryIconUrl}" alt="" draggable="false" data-fallback-src="${escapeAttr(faviconData.fallback || '')}">` : ''}
+          ${primaryIconUrl ? `<img class="quick-shortcut-icon${iconKind === 'image' ? ' quick-shortcut-icon-custom' : ''}" src="${primaryIconUrl}" alt="" draggable="false" data-fallback-src="${fallbackSrc}"${fallbackSrcset ? ` data-fallback-srcset="${fallbackSrcset}"` : ''}>` : ''}
           ${glyph ? `<span class="quick-shortcut-custom-glyph" aria-hidden="true">${glyph}</span>` : ''}
           <span class="quick-shortcut-fallback"${primaryIconUrl || glyph ? ' style="display:none"' : ''}>${fallbackLabel}</span>
         </span>
@@ -384,10 +396,13 @@ function renderTabGroup(group, groupIndex) {
     const safeTitle = escapeAttr(title);
     const iconData = popupIcons.getIconSources ? popupIcons.getIconSources(tab, 16) : { sources: [], hostname: '' };
     const fallbackLabel = popupIcons.getFallbackLabel ? popupIcons.getFallbackLabel(title, iconData.hostname) : '?';
+    const fallbackSrc = escapeAttr(iconData.sources?.[1] || '');
+    const fallbackSrcset = iconData.sources?.length > 2 ? escapeAttr(JSON.stringify(iconData.sources.slice(2))) : '';
     const closeLabel = popupI18n.t ? popupI18n.t('closeTabButton') : 'Close';
     return `
       <div class="popup-tab-row" style="--g:${groupIndex};--r:${tabIndex}" data-action="open-popup-url" data-url="${safeUrl}" data-tab-id="${tab.id}">
-        ${iconData.sources?.[0] ? `<img class="popup-tab-favicon" src="${escapeAttr(iconData.sources[0])}" alt="">` : `<span class="popup-tab-favicon-fallback">${escapeAttr(fallbackLabel)}</span>`}
+        ${iconData.sources?.[0] ? `<img class="popup-tab-favicon" src="${escapeAttr(iconData.sources[0])}" alt="" data-fallback-src="${fallbackSrc}"${fallbackSrcset ? ` data-fallback-srcset="${fallbackSrcset}"` : ''}>` : ''}
+        <span class="popup-tab-favicon-fallback"${iconData.sources?.[0] ? ' style="display:none"' : ''}>${escapeAttr(fallbackLabel)}</span>
         <span class="popup-tab-title" title="${safeTitle}">${safeTitle}</span>
         <button class="popup-tab-close-btn" type="button" data-action="close-popup-tab" data-tab-id="${tab.id}" aria-label="${escapeAttr(closeLabel)}" title="${escapeAttr(closeLabel)}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>

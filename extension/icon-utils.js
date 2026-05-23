@@ -85,17 +85,19 @@
 
     const size = typeof input === 'string' ? 128 : (input?.size ?? 128);
 
-    let protocol, hostname, pageUrl;
+    let protocol, hostname, pageUrl, fallbackOrigin;
     try {
       const parsed = new URL(rawUrl);
       protocol = parsed.protocol;
       hostname = parsed.hostname;
       pageUrl = rawUrl;
+      fallbackOrigin = parsed.origin;
     } catch {
       if (/^[a-zA-Z0-9.-]+$/.test(rawUrl) && rawUrl.includes('.')) {
         protocol = 'https:';
         hostname = rawUrl;
         pageUrl = `https://${rawUrl}`;
+        fallbackOrigin = pageUrl;
       } else {
         return { url: '', source: '', fallback: '' };
       }
@@ -112,13 +114,23 @@
       ? `${faviconBase}?pageUrl=${encodeURIComponent(pageUrl)}&size=${size}`
       : '';
 
-    const fallbackUrl = `https://${hostname}/favicon.ico`;
+    const fallbackUrl = fallbackOrigin ? `${fallbackOrigin}/favicon.ico` : '';
 
     return {
       url: chromeUrl,
       source: chromeUrl ? 'chrome' : '',
       fallback: fallbackUrl,
     };
+  }
+
+  function dedupeIconSources(sources = []) {
+    const seen = new Set();
+    return sources.filter(source => {
+      const normalized = String(source || '').trim();
+      if (!normalized || seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
   }
 
   function isStableIconUrl(url = '') {
@@ -165,13 +177,15 @@
   function getIconSources({ favIconUrl = '', url = '' } = {}, size = 16) {
     const hostname = getHostname(url);
     const primaryDomain = getPrimaryDomain(hostname);
-    const originFaviconUrl = getPageOriginFaviconUrl(url);
-    const sources = [
+    const faviconData = getFaviconUrl({ domain: url, size });
+    const originFaviconUrl = faviconData.fallback || getPageOriginFaviconUrl(url);
+    const sources = dedupeIconSources([
       isStableIconUrl(favIconUrl) ? favIconUrl : '',
+      faviconData.url,
       originFaviconUrl,
       primaryDomain ? getGoogleFaviconUrl(primaryDomain, size) : '',
       hostname && hostname !== primaryDomain ? getGoogleFaviconUrl(hostname, size) : '',
-    ].filter(Boolean);
+    ]);
 
     return {
       hostname,
@@ -183,7 +197,7 @@
 
   function getGroupIcon(group, label, size = 32) {
     const tabs = group?.tabs || [];
-    const preferredTab = tabs.find(tab => tab?.favIconUrl) || tabs[0] || {};
+    const preferredTab = tabs.find(tab => isStableIconUrl(tab?.favIconUrl)) || tabs.find(tab => tab?.url) || tabs[0] || {};
     const { hostname, sources } = getIconSources(preferredTab, size);
 
     return {
