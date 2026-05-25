@@ -5,7 +5,8 @@
  * The toolbar badge is intentionally kept empty.
  */
 
-// console.log('[tab-harbor bg] Service worker loaded, registering event listeners...');
+const TAB_HARBOR_BG_DEBUG = false;
+if (TAB_HARBOR_BG_DEBUG) console.log('[tab-harbor bg] Service worker loaded, registering event listeners...');
 
 async function updateBadge() {
   try {

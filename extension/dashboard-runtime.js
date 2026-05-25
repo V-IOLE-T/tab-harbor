@@ -4666,11 +4666,12 @@ async function initializeDashboardRuntime() {
  * and refreshes the dashboard to show updated tab list.
  */
 function setupTabChangeListener() {
-  // console.log('[tab-harbor] Setting up tab change listener');
-  
+  const DEBUG = false;
+  if (DEBUG) console.log('[tab-harbor] Setting up tab change listener');
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // console.log('[tab-harbor] Received message:', message);
-    
+    if (DEBUG) console.log('[tab-harbor] Received message:', message);
+
     if (message.action === 'tabs-changed') {
       if (shouldSkipStartupTabChange(message)) {
         return;
@@ -4681,20 +4682,20 @@ function setupTabChangeListener() {
       if (Date.now() < (window.__suppressAutoRefreshUntil || 0)) {
         return;
       }
-      
-      // console.log('[tab-harbor] Tab changed, scheduling refresh...');
-      
+
+      if (DEBUG) console.log('[tab-harbor] Tab changed, scheduling refresh...');
+
       // Debounce rapid changes (e.g., closing multiple tabs)
       if (window.__tabRefreshTimeout) {
         clearTimeout(window.__tabRefreshTimeout);
       }
-      
+
       window.__tabRefreshTimeout = setTimeout(async () => {
         try {
-          // console.log('[tab-harbor] Refreshing dashboard...');
+          if (DEBUG) console.log('[tab-harbor] Refreshing dashboard...');
           await renderDashboard();
           updateBackToTopVisibility();
-          // console.log('[tab-harbor] Dashboard refreshed successfully');
+          if (DEBUG) console.log('[tab-harbor] Dashboard refreshed successfully');
         } catch (err) {
           console.warn('[tab-harbor] Failed to refresh dashboard:', err);
         }
