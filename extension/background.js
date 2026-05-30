@@ -21,11 +21,18 @@ function isNewTabBlank(tab, newTabUrls) {
   const knownNewTabUrls = newTabUrls instanceof Set
     ? newTabUrls
     : new Set(Array.isArray(newTabUrls) ? newTabUrls : [newTabUrls]);
+  const url = tab?.url || '';
+  const pendingUrl = tab?.pendingUrl || '';
+  if (pendingUrl && !knownNewTabUrls.has(pendingUrl) && pendingUrl !== 'chrome://newtab/') {
+    return false;
+  }
   return (
-    tab.url === 'chrome://newtab/' ||
-    knownNewTabUrls.has(tab.url) ||
-    tab.url === '' ||
-    (tab.status === 'loading' && !tab.url)
+    url === 'chrome://newtab/' ||
+    knownNewTabUrls.has(url) ||
+    pendingUrl === 'chrome://newtab/' ||
+    knownNewTabUrls.has(pendingUrl) ||
+    url === '' ||
+    (tab.status === 'loading' && !url)
   );
 }
 

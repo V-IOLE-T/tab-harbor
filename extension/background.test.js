@@ -71,6 +71,14 @@ test('isNewTabBlank matches loading tab with no url', () => {
   assert.equal(isNewTabBlank({ url: undefined, status: 'loading' }, EXT_URL), true);
 });
 
+test('isNewTabBlank does not match loading restored tab with normal pendingUrl', () => {
+  assert.equal(isNewTabBlank({ url: undefined, pendingUrl: 'https://example.com', status: 'loading' }, EXT_URL), false);
+});
+
+test('isNewTabBlank matches loading new tab with new-tab pendingUrl', () => {
+  assert.equal(isNewTabBlank({ url: undefined, pendingUrl: ROOT_MANIFEST_EXT_URL, status: 'loading' }, [EXT_URL, ROOT_MANIFEST_EXT_URL]), true);
+});
+
 test('isNewTabBlank does not match normal url', () => {
   assert.equal(isNewTabBlank({ url: 'https://example.com' }, EXT_URL), false);
 });
@@ -174,4 +182,16 @@ test('closeDuplicateNewTabs treats root manifest new tab pages as blank tabs', a
   ];
   await closeDuplicateNewTabs();
   assert.deepEqual(removedTabIds, [1]);
+});
+
+test('closeDuplicateNewTabs preserves restored tabs while their final URLs are pending', async () => {
+  storageData = { themePreferences: { closeDuplicateNewTabsEnabled: true } };
+  removedTabIds = [];
+  globalThis.chrome.tabs.query = async () => [
+    { id: 1, url: 'chrome://newtab/', active: true },
+    { id: 2, url: undefined, pendingUrl: 'https://example.com/a', status: 'loading', active: false },
+    { id: 3, url: undefined, pendingUrl: 'https://example.com/b', status: 'loading', active: false },
+  ];
+  await closeDuplicateNewTabs();
+  assert.deepEqual(removedTabIds, []);
 });
