@@ -3004,10 +3004,70 @@ function renderWorkspaceThemeTools() {
               <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('closeDuplicateNewTabsLabel') : 'Auto-close duplicate new tabs'}</span>
             </label>
           </div>
+          <div class="theme-menu-section">
+            <div class="theme-menu-label">${runtimeT ? runtimeT('settingsExportImport') : 'Export & import'}</div>
+            <div class="theme-menu-actions">
+              <button class="theme-menu-action" type="button" data-action="export-config">${runtimeT ? runtimeT('settingsExport') : 'Export'}</button>
+              <button class="theme-menu-action is-secondary" type="button" data-action="import-config">${runtimeT ? runtimeT('settingsImport') : 'Import'}</button>
+            </div>
+          </div>
         </div>
         <input type="file" id="themeBackgroundInput" accept="image/*" hidden>
+        <input type="file" id="configImportInput" accept="application/json,.json" hidden>
       </div>
     </div>`;
+}
+
+async function handleExportConfig() {
+  const configSync = globalThis.TabHarborConfigSync;
+  if (!configSync) {
+    showToast('Config sync unavailable');
+    return;
+  }
+  try {
+    const json = await configSync.exportConfig();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tab-harbor-config-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setThemeMenuOpen(false, { restoreFocus: true });
+    showToast(runtimeT ? runtimeT('toastConfigExported') : 'Config exported');
+  } catch (err) {
+    console.error('[tab-harbor] Export failed:', err);
+    showToast(runtimeT ? runtimeT('toastConfigExportFailed') : 'Export failed');
+  }
+}
+
+async function handleConfigImportInput(inputEl) {
+  const configSync = globalThis.TabHarborConfigSync;
+  if (!configSync) {
+    showToast('Config sync unavailable');
+    return;
+  }
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const result = await configSync.importConfig(text);
+    await loadThemePreferences();
+    await renderQuickShortcuts();
+    if (document.body.classList.contains('showing-saved-tabs-page')) {
+      await globalThis.TabHarborSessionManager?.renderSavedTabsPage?.();
+    }
+    setThemeMenuOpen(false, { restoreFocus: true });
+    showToast(runtimeT
+      ? runtimeT('toastConfigImported', { keys: result.importedKeys.length })
+      : `Imported ${result.importedKeys.length} setting${result.importedKeys.length !== 1 ? 's' : ''}`);
+  } catch (err) {
+    console.error('[tab-harbor] Import failed:', err);
+    showToast(err?.message || (runtimeT ? runtimeT('toastConfigImportFailed') : 'Import failed'));
+  }
 }
 
 function renderGroupNavArea(groups) {
@@ -3502,6 +3562,18 @@ document.addEventListener('click', async (e) => {
     await saveThemePreferences({ customBackground: '' });
     setThemeMenuOpen(false, { restoreFocus: true });
     showToast(runtimeT ? runtimeT('toastBackgroundCleared') : 'Background cleared');
+    return;
+  }
+
+  if (action === 'export-config') {
+    e.preventDefault();
+    await handleExportConfig();
+    return;
+  }
+
+  if (action === 'import-config') {
+    e.preventDefault();
+    document.getElementById('configImportInput')?.click();
     return;
   }
 
@@ -4528,6 +4600,12 @@ document.addEventListener('change', async (e) => {
       ...tabSessionPickerState,
       targetSessionId: sessionPickerTarget.value || '',
     };
+    return;
+  }
+
+  if (e.target.id === 'configImportInput') {
+    await handleConfigImportInput(e.target);
+    e.target.value = '';
     return;
   }
 

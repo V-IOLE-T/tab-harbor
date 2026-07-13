@@ -2,14 +2,10 @@
 
 (function attachTabHarborConfigSync(globalScope) {
   const {
-    getQuickShortcuts: apiGetQuickShortcuts,
-    saveQuickShortcuts: apiSaveQuickShortcuts,
     normalizeQuickShortcuts: apiNormalizeQuickShortcuts,
   } = globalScope.TabOutThemeControls || {};
 
   const {
-    getSavedTabSessions: apiGetSavedTabSessions,
-    saveSavedTabSessions: apiSaveSavedTabSessions,
     normalizeSavedTabSessions: apiNormalizeSavedTabSessions,
   } = globalScope.TabHarborTabSessions || {};
 
