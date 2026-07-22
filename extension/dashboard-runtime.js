@@ -3234,7 +3234,6 @@ async function buildDomainGroups(realTabs = getRealTabs()) {
   }
 
   if (landingTabs.length > 0) {
-    groupMap.__landing_pages__ = undefined;
     groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
   }
 
