@@ -2511,7 +2511,7 @@ async function navigateCurrentTabToUrl(url) {
 
 async function openOrFocusUrl(url) {
   if (!url) return false;
-  await navigateCurrentTabToUrl(url);
+  await chrome.tabs.create({ url, active: true });
   return true;
 }
 

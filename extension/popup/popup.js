@@ -498,23 +498,8 @@ function syncPopupView() {
 
 async function openPopupUrl(url) {
   if (!url) return;
-  const existing = await findTabByUrl(url);
-  if (existing) {
-    await chrome.tabs.update(existing.id, { active: true });
-    if (existing.windowId) await chrome.windows.update(existing.windowId, { focused: true });
-  } else {
-    await chrome.tabs.create({ url });
-  }
+  await chrome.tabs.create({ url, active: true });
   window.close();
-}
-
-async function findTabByUrl(url) {
-  try {
-    const tabs = await chrome.tabs.query({ url });
-    return tabs[0] || null;
-  } catch {
-    return null;
-  }
 }
 
 async function openPopupTab(tabId, fallbackUrl = '') {

@@ -1001,9 +1001,10 @@ test('saved tabs top nav supports icon and name display modes', () => {
   assert.match(css, /\.saved-session-nav-label\s*\{[\s\S]*white-space:\s*nowrap;[\s\S]*text-overflow:\s*ellipsis;/);
 });
 
-test('quick shortcuts overwrite the current Tab Harbor tab instead of focusing another tab or opening a new one', () => {
-  assert.match(runtimeJs, /async function navigateCurrentTabToUrl\(url\)\s*\{[\s\S]*chrome\.tabs\.query\(\{\s*active:\s*true,\s*currentWindow:\s*true\s*\}\)[\s\S]*chrome\.tabs\.update\(activeTab\.id,\s*\{\s*url\s*\}\)[\s\S]*return true;/);
-  assert.match(runtimeJs, /async function openOrFocusUrl\(url\)\s*\{\s*if \(!url\) return false;\s*await navigateCurrentTabToUrl\(url\);\s*return true;\s*\}/);
+test('quick shortcuts always open a new active tab from the dashboard and popup', () => {
+  assert.match(runtimeJs, /async function openOrFocusUrl\(url\)\s*\{\s*if \(!url\) return false;\s*await chrome\.tabs\.create\(\{\s*url,\s*active:\s*true\s*\}\);\s*return true;\s*\}/);
+  assert.match(popupJs, /async function openPopupUrl\(url\)\s*\{\s*if \(!url\) return;\s*await chrome\.tabs\.create\(\{\s*url,\s*active:\s*true\s*\}\);\s*window\.close\(\);\s*\}/);
+  assert.doesNotMatch(popupJs, /async function findTabByUrl\(/);
   assert.match(runtimeJs, /const fallbackUrl = `https:\/\/www\.google\.com\/search\?q=\$\{encodeURIComponent\(text\)\}`;\s*await navigateCurrentTabToUrl\(fallbackUrl\);/);
 });
 
