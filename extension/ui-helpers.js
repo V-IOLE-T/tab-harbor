@@ -4,6 +4,9 @@ const {
   locale: uiLocale = 'en',
   t: uiT,
 } = globalThis.TabHarborI18n || {};
+const {
+  friendlyDomain: uiHelpersFriendlyDomain,
+} = globalThis.TabOutIconUtils || {};
 
 /* ----------------------------------------------------------------
    UI HELPERS
@@ -381,6 +384,9 @@ const FRIENDLY_DOMAINS = {
 };
 
 function friendlyDomain(hostname) {
+  if (typeof uiHelpersFriendlyDomain === 'function') {
+    return uiHelpersFriendlyDomain(hostname);
+  }
   if (!hostname) return '';
   if (FRIENDLY_DOMAINS[hostname]) return FRIENDLY_DOMAINS[hostname];
 

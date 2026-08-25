@@ -9,11 +9,14 @@ const path = require('node:path');
 
 const {
   assembleSuggestions,
+  buildBookmarkSuggestions,
   buildHistorySuggestions,
   buildOpenTabSuggestions,
   buildQuickShortcutSuggestions,
   buildSessionTabSuggestions,
+  dedupeSuggestionsByUrl,
   filterSuggestions,
+  selectSuggestionIconSources,
   scoreSuggestion,
 } = require(path.join(__dirname, 'search-suggestions.js'));
 
@@ -40,6 +43,54 @@ test('buildQuickShortcutSuggestions labels rows with the shortcut label', () => 
   assert.equal(rows[1].title, 'https://y.example/');
 });
 
+test('buildBookmarkSuggestions preserves Chinese titles and derives nested folder paths', () => {
+  const rows = buildBookmarkSuggestions([
+    {
+      id: '0',
+      title: '',
+      children: [
+        {
+          id: '1',
+          title: '书签栏',
+          children: [
+            {
+              id: '2',
+              title: '项目资料',
+              children: [
+                { id: '3', title: '中文开发文档', url: 'https://docs.example.cn/zh/' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(rows, [{
+    type: 'bookmark',
+    bookmarkId: '3',
+    title: '中文开发文档',
+    url: 'https://docs.example.cn/zh/',
+    folderPath: '书签栏 / 项目资料',
+  }]);
+  assert.equal(filterSuggestions(rows, '中文')[0].bookmarkId, '3');
+  assert.equal(filterSuggestions(rows, '项目资料')[0].bookmarkId, '3');
+});
+
+test('buildBookmarkSuggestions accepts flattened bookmark-model paths', () => {
+  const rows = buildBookmarkSuggestions([{
+    id: 'flat-1',
+    title: '已标准化书签',
+    url: 'https://flat.example/',
+    path: [
+      { id: 'bar', title: '书签栏' },
+      { id: 'folder', title: '阅读' },
+    ],
+  }]);
+
+  assert.equal(rows[0].folderPath, '书签栏 / 阅读');
+});
+
 test('buildSessionTabSuggestions flattens sessions and dedupes URLs', () => {
   const rows = buildSessionTabSuggestions([
     {
@@ -55,6 +106,33 @@ test('buildSessionTabSuggestions flattens sessions and dedupes URLs', () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[0].type, 'session');
   assert.equal(rows[0].label, 'Work');
+});
+
+test('buildSessionTabSuggestions expands direct and nested window session tabs', () => {
+  const rows = buildSessionTabSuggestions({
+    sessions: [
+      {
+        name: '研究会话',
+        tabs: [{ url: 'https://direct.example/', title: '直接标签' }],
+      },
+      {
+        session: {
+          name: '导入会话',
+          windows: [
+            { tabs: [{ url: 'https://nested-a.example/', title: '嵌套 A' }] },
+            { tabs: [{ url: 'https://nested-b.example/', title: '嵌套 B' }] },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(rows.map(row => row.url), [
+    'https://direct.example/',
+    'https://nested-a.example/',
+    'https://nested-b.example/',
+  ]);
+  assert.equal(rows[1].label, '导入会话');
 });
 
 test('buildHistorySuggestions normalizes history items', () => {
@@ -94,15 +172,92 @@ test('filterSuggestions returns everything when query is empty, capped at 12', (
   assert.equal(filtered.length, 12);
 });
 
-test('filterSuggestions groups by source order: tabs, shortcuts, sessions, history', () => {
+test('filterSuggestions groups by source order: tabs, shortcuts, bookmarks, sessions, history', () => {
   const rows = [
     { type: 'history', url: 'https://h.example/', title: 'H site' },
     { type: 'tab', url: 'https://t.example/', title: 'T site' },
     { type: 'shortcut', url: 'https://s.example/', title: 'S site' },
+    { type: 'bookmark', url: 'https://b.example/', title: 'B site' },
     { type: 'session', url: 'https://se.example/', title: 'SE site' },
   ];
   const filtered = filterSuggestions(rows, 'site');
-  assert.deepEqual(filtered.map(r => r.type), ['tab', 'shortcut', 'session', 'history']);
+  assert.deepEqual(filtered.map(r => r.type), ['tab', 'shortcut', 'bookmark', 'session', 'history']);
+});
+
+// @lat: [[tests#书签镜像验收#纵向列表与书签 favicon 偏好]]
+test('bookmark suggestion favicons are opt-in and never use network fallbacks', () => {
+  const bookmark = { type: 'bookmark', url: 'https://example.com/' };
+  const chromeFavicon = 'chrome-extension://abcdefghijklmnop/_favicon/?pageUrl=https%3A%2F%2Fexample.com%2F&size=16';
+  const siteFallback = 'https://example.com/favicon.ico';
+  const serviceFallback = 'https://www.google.com/s2/favicons?domain=example.com&sz=16';
+
+  assert.deepEqual(
+    selectSuggestionIconSources(bookmark, [chromeFavicon, siteFallback, serviceFallback]),
+    { faviconUrl: '', fallbackUrl: '' },
+  );
+  assert.deepEqual(
+    selectSuggestionIconSources(
+      bookmark,
+      [siteFallback, chromeFavicon, serviceFallback],
+      { bookmarksShowFavicons: true },
+    ),
+    { faviconUrl: chromeFavicon, fallbackUrl: '' },
+  );
+  assert.deepEqual(
+    selectSuggestionIconSources(
+      bookmark,
+      [
+        siteFallback,
+        'chrome-extension://abcdefghijklmnop/images/icon.png',
+        serviceFallback,
+      ],
+      { bookmarksShowFavicons: true },
+    ),
+    { faviconUrl: '', fallbackUrl: '' },
+  );
+});
+
+test('non-bookmark suggestion icons retain their existing first fallback', () => {
+  assert.deepEqual(
+    selectSuggestionIconSources(
+      { type: 'tab' },
+      ['https://example.com/icon.png', 'https://example.com/favicon.ico'],
+      { bookmarksShowFavicons: false },
+    ),
+    {
+      faviconUrl: 'https://example.com/icon.png',
+      fallbackUrl: 'https://example.com/favicon.ico',
+    },
+  );
+});
+
+test('dedupeSuggestionsByUrl uses tab, shortcut, bookmark, session, history priority', () => {
+  const shared = 'https://shared.example/';
+  const shortcutWins = 'https://shortcut.example/';
+  const bookmarkWins = 'https://bookmark.example/';
+  const sessionWins = 'https://session.example/';
+  const rows = dedupeSuggestionsByUrl([
+    { type: 'history', url: shared, title: 'History' },
+    { type: 'session', url: shared, title: 'Session' },
+    { type: 'bookmark', url: shared, title: 'Bookmark' },
+    { type: 'shortcut', url: shared, title: 'Shortcut' },
+    { type: 'tab', url: shared, title: 'Tab' },
+    { type: 'history', url: shortcutWins, title: 'History shortcut' },
+    { type: 'bookmark', url: shortcutWins, title: 'Bookmark shortcut' },
+    { type: 'shortcut', url: shortcutWins, title: 'Shortcut winner' },
+    { type: 'history', url: bookmarkWins, title: 'History bookmark' },
+    { type: 'session', url: bookmarkWins, title: 'Session bookmark' },
+    { type: 'bookmark', url: bookmarkWins, title: 'Bookmark winner' },
+    { type: 'history', url: sessionWins, title: 'History session' },
+    { type: 'session', url: sessionWins, title: 'Session winner' },
+  ]);
+
+  assert.deepEqual(rows.map(row => [row.url, row.type]), [
+    [shared, 'tab'],
+    [shortcutWins, 'shortcut'],
+    [bookmarkWins, 'bookmark'],
+    [sessionWins, 'session'],
+  ]);
 });
 
 test('assembleSuggestions unions all sources and filters by query', () => {
@@ -110,16 +265,32 @@ test('assembleSuggestions unions all sources and filters by query', () => {
     {
       tabs: [{ url: 'https://t.example/', title: 'Open Tab', id: 1 }],
       shortcuts: [{ url: 'https://s.example/', title: 'Quick Link' }],
+      bookmarks: [{ id: 'b1', url: 'https://b.example/', title: 'Bookmarked Page', folderPath: 'Work' }],
       sessions: [{ name: 'Sess', tabs: [{ url: 'https://se.example/', title: 'Saved Page' }] }],
       history: [{ url: 'https://h.example/', title: 'Old Page' }],
     },
     'example'
   );
-  assert.equal(out.length, 4);
+  assert.equal(out.length, 5);
   assert.deepEqual(
     out.map(r => r.type).sort(),
-    ['history', 'session', 'shortcut', 'tab']
+    ['bookmark', 'history', 'session', 'shortcut', 'tab']
   );
+});
+
+test('assembleSuggestions removes duplicate URLs across sources', () => {
+  const url = 'https://same.example/';
+  const out = assembleSuggestions({
+    tabs: [{ id: 7, url, title: 'Open copy' }],
+    shortcuts: [{ url, label: 'Shortcut copy' }],
+    bookmarks: [{ id: 'bookmark-7', url, title: '书签副本', folderPath: '工作' }],
+    sessions: [{ name: 'Saved', tabs: [{ url, title: 'Session copy' }] }],
+    history: [{ url, title: 'History copy' }],
+  }, 'same');
+
+  assert.equal(out.length, 1);
+  assert.equal(out[0].type, 'tab');
+  assert.equal(out[0].tabId, 7);
 });
 
 test('assembleSuggestions filters out non-matching sources', () => {

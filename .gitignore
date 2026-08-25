@@ -7,5 +7,5 @@ dist/*.zip
 CLAUDE.local.md
 CLAUDE.md
 .codegraph/
-lat.md/
+lat.md/.cache/
 .pi

@@ -15,6 +15,7 @@ const PATH_PREFIX = 'extension/';
 
 const SHARED_LITERAL_FIELDS = [
   'manifest_version',
+  'minimum_chrome_version',
   'name',
   'version',
   'description',
@@ -36,6 +37,11 @@ test('root manifest mirrors extension manifest on permissions array', () => {
     extensionManifest.permissions,
     'permissions array must match between extension/manifest.json and root manifest.json',
   );
+});
+
+test('root manifest mirrors optional permissions', () => {
+  assert.deepEqual(rootManifest.optional_permissions, extensionManifest.optional_permissions);
+  assert.deepEqual(extensionManifest.optional_permissions, ['bookmarks']);
 });
 
 test('root manifest mirrors extension manifest on icon sizes', () => {

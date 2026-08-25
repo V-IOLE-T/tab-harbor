@@ -48,6 +48,12 @@ test('STORAGE_KEYS includes popupView so popup view memory survives export/impor
   assert.ok(STORAGE_KEYS.includes('popupView'), 'popupView must round-trip through config export/import');
 });
 
+test('STORAGE_KEYS excludes session-only Chrome group identity metadata', () => {
+  assert.ok(!STORAGE_KEYS.includes('chromeTabGroupsMeta'));
+  assert.ok(!STORAGE_KEYS.includes('automaticTabGroupRuleOverrides'));
+  assert.ok(!STORAGE_KEYS.includes('chromeTabGroupsCleanupPending'));
+});
+
 test('exportConfig returns the complete versioned configuration with custom icons', async () => {
   const initial = {
     themePreferences: { mode: 'dark', paletteId: 'sage' },
@@ -62,7 +68,6 @@ test('exportConfig returns the complete versioned configuration with custom icon
     savedTabSessionOrder: ['session-1'],
     savedTabSessionCollapsedState: { 'session-1': true },
     chromeTabGroupsEnabled: true,
-    chromeTabGroupsMeta: { entries: [] },
     importedChromeSessionGroups: { entries: [] },
     deferredTriggerPosition: { top: 120 },
   };
@@ -152,7 +157,6 @@ test('importConfig writes the complete configuration to storage', async () => {
     savedTabSessionOrder: [],
     savedTabSessionCollapsedState: {},
     chromeTabGroupsEnabled: false,
-    chromeTabGroupsMeta: null,
     importedChromeSessionGroups: { entries: [] },
     deferredTriggerPosition: { top: null },
     popupView: 'tabs',
