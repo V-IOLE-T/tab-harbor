@@ -61,6 +61,8 @@
           <div class="section-line"></div>
           <div class="section-count" id="openTabsSectionCount"></div>
         </div>
+        <div class="chrome-group-conflicts" id="chromeGroupConflictsStatus" role="status"
+          aria-live="polite" aria-atomic="true"></div>
         <div class="missions" id="openTabsMissions"></div>
       </div>
 
@@ -87,6 +89,7 @@
               </svg>
               <input class="header-search-input" id="headerSearchInput" type="search" name="q"
                 placeholder="Search with your default engine..." autocomplete="off" spellcheck="false"
+                role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
                 aria-controls="headerSearchSuggestions" aria-expanded="false"
                 aria-describedby="headerSearchSuggestionsHint" autofocus>
               <span class="header-search-hint" id="headerSearchSuggestionsHint" aria-hidden="true"></span>
@@ -97,6 +100,7 @@
           <section class="quick-tabs" id="quickTabsSection">
             <div class="quick-tabs-grid" id="quickTabsList"></div>
           </section>
+          <div class="bookmarks-shelf-host" id="bookmarksShelfHost"></div>
         </div>
       </header>
 
@@ -367,6 +371,27 @@
     </svg>
   </button>
 
+  <dialog class="chrome-group-merge-dialog" id="chromeGroupMergeDialog" aria-labelledby="chromeGroupMergeDialogTitle">
+    <form class="chrome-group-merge-form" id="chromeGroupMergeForm" method="dialog">
+      <div class="chrome-group-merge-head">
+        <div>
+          <h2 id="chromeGroupMergeDialogTitle"></h2>
+          <p id="chromeGroupMergeDialogHint"></p>
+        </div>
+        <button class="chrome-group-merge-close" type="button" data-action="close-chrome-group-merge" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <fieldset class="chrome-group-merge-options" id="chromeGroupMergeOptions"></fieldset>
+      <div class="chrome-group-merge-actions">
+        <button class="chrome-group-merge-button is-secondary" type="button" data-action="close-chrome-group-merge" id="chromeGroupMergeCancel"></button>
+        <button class="chrome-group-merge-button" type="submit" id="chromeGroupMergeConfirm"></button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Checked-in defaults + optional local overrides -->
   <script src="config.js"></script>
   <script src="config-loader.js"></script>
@@ -382,6 +407,9 @@
   <script src="i18n.js"></script>
   <script src="ui-helpers.js"></script>
   <script src="tab-url-utils.js"></script>
+  <script src="automatic-tab-groups.js"></script>
+  <script src="bookmarks-model.js"></script>
+  <script src="bookmarks-shelf.js"></script>
   <script src="search-suggestions.js"></script>
   <script src="tab-sessions.js"></script>
   <script src="session-manager.js"></script>

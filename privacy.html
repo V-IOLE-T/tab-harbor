@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tab Harbor Privacy Policy</title>
-  <meta name="description" content="Privacy Policy for Tab Harbor, a calmer Chrome new tab workspace for tabs, quick links, saved reads, and lightweight todos.">
+  <meta name="description" content="Privacy Policy for Tab Harbor, a calmer Chrome new tab workspace for tabs, optional read-only Chrome bookmarks, quick links, saved reads, and lightweight todos.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -420,11 +420,11 @@
       <p class="eyebrow">Tab Harbor</p>
       <h1>Privacy Policy</h1>
       <p class="subtitle">
-        Tab Harbor is a calmer Chrome new tab workspace for open tabs, quick links, saved reads, and lightweight todos.
+        Tab Harbor is a calmer Chrome new tab workspace for open tabs, optional read-only access to Chrome bookmarks, quick links, saved reads, and lightweight todos.
         This page explains what data the extension accesses, why it needs that data, and how that data is handled.
       </p>
       <div class="meta" aria-label="Policy metadata">
-        <span class="meta-item">Last updated: 2026-05-27</span>
+        <span class="meta-item">Last updated: 2026-08-25</span>
         <span class="meta-item">Local-first by default</span>
         <span class="meta-item">No remote code</span>
       </div>
@@ -434,7 +434,7 @@
       <article class="card">
         <div class="legal-note">
           <p class="legal-note-title">Privacy Snapshot</p>
-          <p>Tab Harbor is a local-first Chrome extension. It organizes tabs, quick links, saved reads, and lightweight todos inside the new tab page. It does not require an account, does not sell user data, and does not use remote code.</p>
+          <p>Tab Harbor is a local-first Chrome extension. It organizes tabs, optional read-only Chrome bookmarks, quick links, saved reads, and lightweight todos inside the new tab page. It does not require an account, does not sell user data, and does not use remote code.</p>
         </div>
 
         <section id="summary">
@@ -447,6 +447,7 @@
             <li>It does not send workspace data to a developer-controlled backend.</li>
           </ul>
           <p>Most extension data is stored locally through Chrome extension storage APIs.</p>
+          <p>Bookmark access is optional. It is not granted at installation and is requested only after the user clicks the extension's <strong>Show bookmarks</strong> button.</p>
         </section>
 
         <section id="data-accessed">
@@ -454,6 +455,7 @@
           <p>To provide its core features, Tab Harbor may access the following categories of data:</p>
           <ul>
             <li>Open tab metadata, including tab titles, URLs, and tab state</li>
+            <li>Chrome bookmark titles, URLs, and folder hierarchy, but only after the user grants the optional <code>bookmarks</code> permission</li>
             <li>Quick links created by the user</li>
             <li>Saved read-later items created by the user</li>
             <li>Todo items created by the user</li>
@@ -469,6 +471,7 @@
           <ul>
             <li>Show and organize the user’s current browser session in the new tab page</li>
             <li>Help the user review, group, focus, close, deduplicate, save, and restore tabs</li>
+            <li>Show a read-only bookmark shelf, search Chrome bookmarks, and open a bookmark selected by the user</li>
             <li>Let the user manage quick links, saved reads, and lightweight todos in one workspace</li>
             <li>Restore user preferences and layout state when the new tab page is opened again</li>
             <li>Let the user paste a custom icon into a shortcut when they explicitly choose to do so</li>
@@ -497,9 +500,18 @@
           </ul>
           <p><strong><code>history</code></strong></p>
           <ul>
-            <li>suggest recently visited pages in the search field’s inline suggestion panel, alongside open tabs, quick links, and saved sessions</li>
+            <li>suggest recently visited pages in the search field’s inline suggestion panel, alongside open tabs, quick links, Chrome bookmarks available after optional access is granted, and saved sessions</li>
             <li>read a bounded list of recent history only while the user is typing in the search field; never stored, exported, or sent by Tab Harbor</li>
           </ul>
+          <p><strong><code>bookmarks</code> (optional)</strong></p>
+          <ul>
+            <li>requested only after the user explicitly clicks <strong>Show bookmarks</strong>, not during installation</li>
+            <li>read Chrome's bookmark tree for a read-only shelf; prefer the folder identified by <code>folderType: "bookmarks-bar"</code>, with the first folder under the browser bookmark root as a fallback</li>
+            <li>search bookmarks after the user types in bookmark search or the combined destination search</li>
+            <li>listen for bookmark and permission changes so the in-memory view can refresh</li>
+          </ul>
+          <p>Tab Harbor does not create, rename, move, reorder, or delete bookmarks. It does not copy the bookmark tree into <code>chrome.storage.local</code>, and bookmarks are not included in configuration exports. Tab Harbor blocks bookmark URLs whose scheme is <code>javascript:</code>, <code>data:</code>, or <code>vbscript:</code>. Every other syntactically valid URL is handed to Chrome, and Tab Harbor shows feedback if Chrome cannot open it.</p>
+          <p>Bookmark website icons are off by default. If enabled, bookmark rows and bookmark search suggestions use only Chrome's extension-local <code>_favicon</code> endpoint; Tab Harbor does not fall back to a bookmark site's <code>favicon.ico</code> or a third-party favicon service.</p>
           <p><strong><code>clipboardRead</code></strong></p>
           <ul>
             <li>let the user explicitly paste an image or SVG into the shortcut editor for a custom shortcut icon</li>
@@ -507,10 +519,12 @@
           <p><strong><code>tabGroups</code></strong></p>
           <ul>
             <li>read existing native Chrome tab groups</li>
-            <li>create or update Chrome tab groups to match the workspace</li>
-            <li>keep group titles, colors, and collapsed state aligned with the user’s chosen organization</li>
+            <li>coordinate Chrome tab-group writes serially through the background service worker</li>
+            <li>create groups for logical workspace groups when no safe existing group can be reused</li>
+            <li>adopt a unique safe same-title native group without changing that group's title, color, or collapsed state</li>
             <li>respond when Chrome tab groups change outside the Tab Harbor page</li>
           </ul>
+          <p>If several existing groups are candidates, Tab Harbor does not select or merge one automatically; user confirmation is required. Adopted native groups are not auto-collapsed and are not ungrouped when sync is disabled.</p>
           <p><strong><code>favicon</code></strong></p>
           <ul>
             <li>request and display site icons for tabs, saved sessions, and quick shortcuts more reliably</li>
@@ -523,12 +537,15 @@
           <p>Tab Harbor stores extension data locally using Chrome extension storage APIs, primarily <code>chrome.storage.local</code>.</p>
           <p>This includes items such as quick links, saved reads, todos, theme preferences, and layout state.</p>
           <p>This data remains in the browser profile until the user removes it through the extension UI, clears extension storage, or uninstalls the extension.</p>
+          <p>The mapping between a logical Chrome group, a Chrome window, and the current native group ID is session-only state stored in <code>chrome.storage.session</code>. It records group/window IDs and whether a group was created or adopted; it is not included in configuration export. Legacy persistent Chrome group identity metadata is removed rather than migrated into exported configuration.</p>
+          <p>Two derived Chrome-group coordination values may be kept in <code>chrome.storage.local</code>: a declarative grouping-rule snapshot used by the background worker and a pending-cleanup flag used to resume an interrupted disable operation. Neither value is included in configuration export. Function source from an optional local grouping rule is never stored.</p>
+          <p>After optional bookmark permission is granted, bookmark data is read into memory to render and search the shelf. The bookmark tree is not copied into extension-owned local storage and is not exported.</p>
         </section>
 
         <section id="sharing">
           <h2>6. Data sharing</h2>
           <p>Tab Harbor does not sell user data.</p>
-          <p>Tab Harbor does not transfer user data to third parties except where necessary to perform a user-requested browser action, such as opening a page chosen by the user, submitting a search through the browser’s default search engine, or requesting favicon resources needed to display site icons in the workspace.</p>
+          <p>Tab Harbor does not transfer user data to third parties except where necessary to perform a user-requested browser action, such as opening a page or Chrome bookmark chosen by the user, submitting a search through the browser’s default search engine, or requesting favicon resources needed to display site icons in the workspace. A bookmark opens in the current tab by default, in a background tab for Ctrl/Cmd-click or middle-click, or in a new window for Shift-click.</p>
           <p>Aside from those normal browser actions initiated by the user, Tab Harbor does not send workspace data to a developer-controlled remote service.</p>
         </section>
 
@@ -547,7 +564,7 @@
 
         <section id="choices">
           <h2>9. User choices and controls</h2>
-          <p>Users can control their data by editing or deleting quick links, deleting saved reads or todos, changing theme and layout preferences, uninstalling the extension, or clearing extension storage through browser settings.</p>
+          <p>Users can control their data by editing or deleting quick links, deleting saved reads or todos, choosing whether to grant the optional bookmarks permission and revoking it later through Chrome's extension settings, changing theme and layout preferences, uninstalling the extension, or clearing extension storage through browser settings.</p>
           <p>If you do not want Tab Harbor to access your open tabs, do not use the extension.</p>
         </section>
 

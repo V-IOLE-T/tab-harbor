@@ -131,7 +131,7 @@ test('desk settings separates appearance and feature controls', () => {
   assert.match(runtimeJs, /class="theme-menu-tabs" role="tablist"/);
   assert.match(runtimeJs, /data-theme-menu-tab="appearance"[\s\S]*data-theme-menu-tab="features"/);
   assert.match(runtimeJs, /id="themeMenuAppearancePanel"[\s\S]*id="themeModeOptions"[\s\S]*id="themeOptions"/);
-  assert.match(runtimeJs, /id="themeMenuFeaturesPanel"[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*data-action="toggle-hitokoto"[\s\S]*data-action="toggle-sleep-control"[\s\S]*data-action="toggle-close-duplicate-new-tabs"/);
+  assert.match(runtimeJs, /id="themeMenuFeaturesPanel"[\s\S]*data-action="toggle-chrome-tab-groups"[\s\S]*data-action="toggle-bookmark-favicons"[\s\S]*data-action="toggle-hitokoto"[\s\S]*data-action="toggle-sleep-control"[\s\S]*data-action="toggle-close-duplicate-new-tabs"/);
   assert.match(runtimeJs, /if \(action === 'select-theme-menu-tab'\)/);
   assert.match(themeJs, /let themeMenuActiveTab = 'appearance';/);
   assert.match(themeJs, /querySelectorAll\('\[data-theme-menu-panel\]'\)/);
@@ -370,7 +370,11 @@ test('background keeps the toolbar badge empty', () => {
 });
 
 test('background notifies pages when a tab is replaced (stale chip root cause)', () => {
-  assert.match(backgroundJs, /chrome\.tabs\.onReplaced\.addListener\(\(addedTabId\) => \{\s*updateBadge\(\);\s*notifyTabHarborPages\(\{ source: "tabs\.onReplaced", triggerTabId: addedTabId \}\)/);
+  assert.match(backgroundJs, /chrome\.tabs\.onReplaced\.addListener\(async \(addedTabId\) => \{/);
+  assert.match(backgroundJs, /replacementTab = await chrome\.tabs\.get\(addedTabId\)/);
+  assert.match(backgroundJs, /source: "tabs\.onReplaced",[\s\S]{0,120}triggerTabId: addedTabId,[\s\S]{0,120}windowId: replacementTab\?\.windowId/);
+  assert.match(backgroundJs, /scheduleAutomaticChromeGroupSync\(replacementTab\.windowId\)/);
+  assert.match(backgroundJs, /scheduleAutomaticChromeGroupSyncForAllWindows\(\)/);
 });
 
 test('manifest keeps only permissions required by the shipped runtime', () => {
@@ -381,7 +385,104 @@ test('manifest keeps only permissions required by the shipped runtime', () => {
   assert.match(manifest, /"search"/);
   assert.match(manifest, /"history"/);
   assert.match(manifest, /"clipboardRead"/);
+  assert.match(manifest, /"optional_permissions"/);
+  assert.match(manifest, /"bookmarks"/);
+  assert.match(manifest, /"minimum_chrome_version": "102"/);
   assert.doesNotMatch(manifest, /"activeTab"/);
+});
+
+test('bookmark shelf and unified-search scripts load in collision-safe order', () => {
+  const modelIndex = html.indexOf('<script src="bookmarks-model.js"></script>');
+  const shelfIndex = html.indexOf('<script src="bookmarks-shelf.js"></script>');
+  const suggestionsIndex = html.indexOf('<script src="search-suggestions.js"></script>');
+  const runtimeIndex = html.indexOf('<script src="dashboard-runtime.js"></script>');
+  assert.ok(modelIndex > 0 && modelIndex < shelfIndex);
+  assert.ok(shelfIndex < suggestionsIndex && suggestionsIndex < runtimeIndex);
+  assert.match(html, /<div class="bookmarks-shelf-host" id="bookmarksShelfHost"><\/div>/);
+  assert.match(runtimeJs, /setupBookmarksShelf\(\);/);
+  assert.match(runtimeJs, /bookmarksShelfController\.getSearchItems\(\)/);
+  assert.match(runtimeJs, /showFavicons: typeof themePreferences !== 'undefined' && themePreferences\.bookmarksShowFavicons === true/);
+  assert.match(runtimeJs, /TabHarborSearchSuggestions\?\.selectSuggestionIconSources/);
+  assert.match(runtimeJs, /const shouldResolveIcon = row\.type !== 'bookmark' \|\| bookmarksShowFavicons;/);
+  assert.match(runtimeJs, /const iconData = shouldResolveIcon && runtimeGetIconSources/);
+  assert.match(runtimeJs, /row\.type === 'bookmark'[\s\S]{0,100}\{ faviconUrl: '', fallbackUrl: '' \}/);
+  assert.match(runtimeJs, /getFaviconUrl: runtimeGetFaviconUrl/);
+  assert.match(runtimeJs, /data-action="toggle-bookmark-favicons"/);
+  assert.match(runtimeJs, /await saveThemePreferences\(\{ bookmarksShowFavicons: nextEnabled \}\);\s*bookmarksShelfController\?\.setShowFavicons\?\.\(nextEnabled\);/);
+  assert.match(themeJs, /bookmarksShowFavicons: false/);
+  assert.match(themeJs, /bookmarksShowFavicons: next\.bookmarksShowFavicons === true/);
+  assert.match(i18nJs, /bookmarksShowFaviconsLabel: 'Show website icons for bookmarks'/);
+  assert.match(i18nJs, /bookmarksShowFaviconsLabel: '显示书签网页图标'/);
+});
+
+test('search suggestions expose combobox semantics and stable active result ids', () => {
+  assert.match(html, /id="headerSearchInput"[\s\S]{0,300}role="combobox"[\s\S]{0,120}aria-autocomplete="list"/);
+  assert.match(html, /id="headerSearchSuggestions" hidden role="listbox"/);
+  assert.match(runtimeJs, /function getSearchSuggestionResultId\(row = \{\}\) \{/);
+  assert.match(runtimeJs, /id="\$\{resultId\}" role="option"/);
+  assert.match(runtimeJs, /setAttribute\('aria-activedescendant', row\.id\)/);
+  assert.match(runtimeJs, /removeAttribute\('aria-activedescendant'\)/);
+  assert.match(runtimeJs, /const gen = \+\+searchSuggestionsGeneration;/);
+  assert.match(runtimeJs, /gen !== searchSuggestionsGeneration \|\| input\.value !== query/);
+  assert.match(runtimeJs, /function renderSearchSuggestions[\s\S]{0,180}removeAttribute\('aria-activedescendant'\)[\s\S]{0,180}panel\.innerHTML/);
+});
+
+test('new bookmark and duplicate-group surfaces keep the quiet workspace language', () => {
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+  assert.match(css, /\.bookmarks-shelf \{[\s\S]{0,180}border-top: 1px solid/);
+  assert.match(css, /\.bookmarks-shelf-list \{[\s\S]{0,180}display:\s*grid;[\s\S]{0,260}overflow-x:\s*hidden;[\s\S]{0,100}overflow-y:\s*auto/);
+  assert.doesNotMatch(css, /\.bookmarks-shelf\[data-view="root"\] \.bookmarks-shelf-list \{[\s\S]{0,180}overflow-x:\s*auto/);
+  assert.match(css, /\.bookmarks-shelf-favicon \{[\s\S]{0,140}width:\s*16px;[\s\S]{0,80}height:\s*16px/);
+  assert.match(css, /\.chrome-group-conflict \{[\s\S]{0,240}border-left: 2px solid/);
+  assert.match(css, /\.chrome-group-merge-option\.is-selected,[\s\S]{0,120}:focus-within/);
+  assert.match(css, /\.bookmarks-shelf :is\(button, input\):focus-visible,[\s\S]{0,180}outline: 2px solid var\(--focus-ring\)/);
+});
+
+test('open-tab row hover keeps card geometry and action hit areas stable', () => {
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+  const ruleBody = selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`))?.[1] || '';
+  };
+  const geometryChangingProperties = /\b(?:display|width|height|margin|padding|border-width|transform)\s*:/;
+
+  const cardHover = ruleBody('.mission-card:hover');
+  const rowHover = ruleBody('.page-chip.clickable:hover');
+  const actionHover = ruleBody('.chip-action:hover');
+  assert.match(cardHover, /box-shadow\s*:/);
+  assert.match(rowHover, /background\s*:/);
+  assert.match(actionHover, /opacity\s*:/);
+  assert.doesNotMatch(cardHover, geometryChangingProperties);
+  assert.doesNotMatch(rowHover, geometryChangingProperties);
+  assert.doesNotMatch(actionHover, geometryChangingProperties);
+
+  const actionGroup = ruleBody('.chip-actions');
+  const actionButton = ruleBody('.chip-action');
+  const tooltip = ruleBody('.chip-action[data-tooltip]::after,\n.group-action-icon[data-tooltip]::after,\n.section-icon-action[data-tooltip]::after,\n.page-chip-batch-action[data-tooltip]::after,\n.todo-action-btn[data-tooltip]::after');
+  assert.match(actionGroup, /display\s*:\s*flex/);
+  assert.match(actionGroup, /flex-shrink\s*:\s*0/);
+  assert.match(actionButton, /width\s*:\s*28px/);
+  assert.match(actionButton, /height\s*:\s*28px/);
+  assert.match(tooltip, /position\s*:\s*absolute/);
+  assert.match(tooltip, /pointer-events\s*:\s*none/);
+});
+
+test('duplicate-group merge dialog is modal, keyboard-safe, and returns focus', () => {
+  assert.match(html, /id="chromeGroupConflictsStatus" role="status"\s*aria-live="polite" aria-atomic="true"/);
+  assert.match(html, /<dialog class="chrome-group-merge-dialog" id="chromeGroupMergeDialog"/);
+  assert.match(html, /<fieldset class="chrome-group-merge-options" id="chromeGroupMergeOptions"><\/fieldset>/);
+  assert.match(runtimeJs, /if \(!dialog\.open\) dialog\.showModal\(\);/);
+  assert.match(runtimeJs, /dialog\.addEventListener\('close', \(\) => \{[\s\S]{0,220}trigger\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(runtimeJs, /input type="radio" name="chromeGroupMergeTarget"/);
+  assert.match(runtimeJs, /const expectedTabs = [\s\S]{0,420}rawUrl/);
+  assert.match(runtimeJs, /expectedGroups\.push\(\{/);
+  assert.match(runtimeJs, /sendChromeTabGroupRequest\('merge-chrome-tab-groups', \{\s*windowId: Number\(windowId\),\s*groupKey: dialogState\.groupKey,\s*targetGroupId,\s*sourceGroupIds,\s*expectedGroups,/);
+  assert.match(runtimeJs, /await renderDashboard\(\);\s*focusChromeGroupMergeResult\(mergedGroupKey\);/);
+  assert.match(runtimeJs, /chromeGroupMergePosition/);
+  assert.match(runtimeJs, /function applyChromeTabGroupResponseConflicts\(response\)/);
+  assert.match(runtimeJs, /function syncChromeTabGroupConflictStatus\(\)/);
+  assert.doesNotMatch(runtimeJs, /chrome-group-conflict-copy" role="status"/);
+  assert.match(runtimeJs, /applyChromeTabGroupResponseConflicts\(response\)[\s\S]{0,100}renderOpenTabsSummary\(getRealTabs\(\)\)/);
 });
 
 test('root manifest mirrors the Edge unpacked entry points', () => {
@@ -1090,15 +1191,12 @@ test('saved session restore supports both current-window and new-window modes', 
   assert.match(runtimeJs, /const \{ state: nextSessionGroups, chromeGroupPlans \} = runtimeCreateRestoredSessionGroups\(\{/);
   assert.match(runtimeJs, /await restoreChromeGroupsForSession\(chromeGroupPlans, windowId\);/);
   assert.match(runtimeJs, /async function restoreChromeGroupsForSession\(plans, windowId\) \{/);
-  assert.match(runtimeJs, /const groupId = await chrome\.tabs\.group\(groupOptions\);/);
-  // Chrome creates the fresh group in the CALLER's window by default, which
-  // would drag tabs created in the restore target window across windows;
-  // createProperties.windowId pins the new group to the target window so a
-  // new-window restore keeps chrome-group tabs in place with the other tabs.
-  assert.match(runtimeJs, /const groupOptions = windowId != null\s*\? \{ tabIds: planTabIds, createProperties: \{ windowId: Number\(windowId\) \} \}\s*: \{ tabIds: planTabIds \};/);
-  assert.match(runtimeJs, /const groupId = await chrome\.tabs\.group\(groupOptions\);/);
-  assert.match(runtimeJs, /await chrome\.tabGroups\.update\(groupId, \{/);
-  assert.match(runtimeJs, /reorderGroupedTabs\(groupId, planTabIds\.map\(String\), windowId\)/);
+  // The service worker pins the group to the restored window, revalidates the
+  // live tab ids, applies appearance, and orders members in its serial queue.
+  assert.match(runtimeJs, /const targetWindowId = Number\.isInteger\(Number\(windowId\)\)[\s\S]{0,120}getWindowIdForChromeGroupTabs\(planTabIds\);/);
+  assert.match(runtimeJs, /await performChromeGroupMutation\('create', \{\s*windowId: targetWindowId,\s*tabIds: planTabIds,\s*orderedTabIds: planTabIds,\s*title,\s*color:/);
+  assert.doesNotMatch(runtimeJs, /chrome\.tabs\.group\s*\(/);
+  assert.doesNotMatch(runtimeJs, /chrome\.tabGroups\.update\s*\(/);
 });
 
 test('saved tabs top nav supports icon and name display modes', () => {
@@ -1213,7 +1311,7 @@ test('search engine can be customized with presets or a custom URL', () => {
   assert.match(runtimeJs, /const customUrl = \(\(typeof themePreferences !== 'undefined' && themePreferences\.customSearchUrl\) \|\| ''\)\.trim\(\);/);
   assert.match(runtimeJs, /placeholder = customUrl[\s\S]*\? \(runtimeT \? runtimeT\('searchPlaceholderCustom'\) : 'Search with a custom engine\.\.\.'\)[\s\S]*: \(runtimeT \? runtimeT\('searchPlaceholderDefault'\) : 'Search with your default engine\.\.\.'\);/);
   assert.match(runtimeJs, /placeholder = runtimeT \? runtimeT\('searchPlaceholderDefault'\) : 'Search with your default engine\.\.\.';/);
-  assert.match(runtimeJs, /await loadThemePreferences\(\);\s*syncSearchPlaceholder\(\);/);
+  assert.match(runtimeJs, /await loadThemePreferences\(\);\s*automaticGroupingRuleOverridesPublished = await publishAutomaticGroupingRuleOverrides\(\);\s*syncSearchPlaceholder\(\);/);
   assert.match(runtimeJs, /saveThemePreferences\(\{\s*searchEngine: engine\s*\}\);\s*syncSearchPlaceholder\(\);/);
   assert.match(runtimeJs, /customSection\.style\.display = engine === 'custom' \? '' : 'none';/);
   assert.match(runtimeJs, /navHost\.addEventListener\('wheel', \(e\) => \{[\s\S]*e\.target\.closest\('\.group-nav-list'\)[\s\S]*if \(list\.scrollWidth <= list\.clientWidth\) return;[\s\S]*if \(Math\.abs\(e\.deltaY\) > Math\.abs\(e\.deltaX\)\) \{[\s\S]*e\.preventDefault\(\);[\s\S]*list\.scrollLeft \+= e\.deltaY;/);
@@ -1444,6 +1542,13 @@ test('chrome tab group mode stays active while the toggle is on', () => {
   );
 });
 
+test('turning Chrome group sync off keeps failed cleanup visible and retryable', () => {
+  assert.match(runtimeJs, /async function requestChromeTabGroupCleanup\(\) \{[\s\S]{0,700}response\?\.ok[\s\S]{0,120}scheduleChromeTabGroupCleanupRetry\(\)/);
+  assert.match(runtimeJs, /cleanupResponse = await requestChromeTabGroupCleanup\(\)/);
+  assert.match(runtimeJs, /cleanupResponse\?\.ok[\s\S]{0,260}toastChromeTabGroupsOffCleanupPending/);
+  assert.match(runtimeJs, /hasCreatedChromeTabGroupMappings\(\) && !chromeTabGroupCleanupRetryTimer[\s\S]{0,100}requestChromeTabGroupCleanup\(\)/);
+});
+
 test('discard tab supports per-chip, group-level, and global sleep-all with gated visibility', () => {
   assert.match(runtimeJs, /async function discardTab\(tabId\)\s*\{[\s\S]*chrome\.tabs\.discard\(/);
   assert.match(runtimeJs, /data-action="discard-tab"/);
@@ -1485,16 +1590,25 @@ test('theme menu keeps chrome tab groups above hitokoto and uses left-aligned to
   assert.match(css, /\.theme-menu-toggle-button-row\s*\{[\s\S]*cursor:\s*default;/);
 });
 
-test('hitokoto uses cached text and refreshes in the background without blocking dashboard render', () => {
+test('hitokoto locks one page entry while background warming only serves later tabs', () => {
   assert.match(runtimeJs, /const HITOKOTO_CACHE_KEY = 'hitokotoCache';/);
+  assert.match(runtimeJs, /const hitokotoPageState = \{[\s\S]*locked: false,[\s\S]*rendered: false,[\s\S]*warmPromise: null/);
+  assert.match(runtimeJs, /function lockHitokotoForCurrentPage\(\)/);
   assert.match(runtimeJs, /function renderCachedHitokoto\(/);
-  assert.match(runtimeJs, /function refreshHitokotoInBackground\(/);
   assert.match(runtimeJs, /function warmHitokotoCacheInBackground\(/);
-  assert.match(runtimeJs, /renderCachedHitokoto\(hitokotoTextEl, hitokotoFromEl\);[\s\S]*void warmHitokotoCacheInBackground\(\);/);
+  assert.match(runtimeJs, /function syncHitokotoForCurrentPage\(\)/);
+  assert.match(runtimeJs, /syncHitokotoForCurrentPage\(\);/);
+  assert.match(runtimeJs, /await saveThemePreferences\(\{ hitokotoEnabled: nextEnabled \}\);\s*syncHitokotoForCurrentPage\(\);/);
+
+  const warmBody = runtimeJs.match(
+    /function warmHitokotoCacheInBackground\(\) \{([\s\S]*?)\n\}/
+  )?.[1] || '';
+  assert.match(warmBody, /hitokotoPageState\.warmPromise/);
+  assert.doesNotMatch(warmBody, /setHitokotoContent|renderCachedHitokoto|syncHitokotoForCurrentPage|document\./);
 
   const renderStaticDashboardBody = runtimeJs.match(
     /async function renderStaticDashboard\(\) \{([\s\S]*?)\n\}\n\nasync function renderDashboard/
   )?.[1] || '';
   assert.doesNotMatch(renderStaticDashboardBody, /await fetchHitokoto/);
-  assert.doesNotMatch(renderStaticDashboardBody, /refreshHitokotoInBackground/);
+  assert.doesNotMatch(renderStaticDashboardBody, /getHitokotoCache|warmHitokotoCacheInBackground/);
 });

@@ -24,6 +24,7 @@ const {
 const {
   escapeHtml: runtimeEscapeHtml,
   escapeHtmlAttribute: runtimeEscapeHtmlAttribute,
+  getFaviconUrl: runtimeGetFaviconUrl,
   getFallbackLabel: runtimeGetFallbackLabel,
   getGroupIcon: runtimeGetGroupIcon,
   getIconSources: runtimeGetIconSources,
@@ -53,8 +54,6 @@ const {
   loadChromeTabGroupsSetting,
   saveChromeTabGroupsSetting,
   syncChromeTabGroups,
-  collapseChromeTabGroupsInWindow,
-  syncChromeTabGroupExpansionForTab,
   isChromeTabGroupsEnabled,
   populateChromeGroupMap,
   queryExistingChromeGroups,
@@ -110,6 +109,18 @@ const {
 } = globalThis.TabHarborTabUrlUtils || {};
 
 const {
+  matchesHostnameSuffix: runtimeMatchesHostnameSuffix,
+  getAutomaticLandingPagePatterns: runtimeGetAutomaticLandingPagePatterns,
+  isAutomaticLandingPage: runtimeIsAutomaticLandingPage,
+  getAutomaticTabGroupDefinition: runtimeGetAutomaticTabGroupDefinition,
+  getAutomaticGroupDisplayTitle: runtimeGetAutomaticGroupDisplayTitle,
+  analyzeNativeChromeGroups: runtimeAnalyzeNativeChromeGroups,
+  buildAutomaticChromeSyncSnapshot: runtimeBuildAutomaticChromeSyncSnapshot,
+  createAutomaticGroupingRuleOverrides: runtimeCreateAutomaticGroupingRuleOverrides,
+  normalizeStoredAutomaticGroupingRuleOverrides: runtimeNormalizeStoredAutomaticGroupingRuleOverrides,
+} = globalThis.TabHarborAutomaticTabGroups || {};
+
+const {
   addSavedTabSession: runtimeAddSavedTabSession,
   appendSavedTabSessionTabs: runtimeAppendSavedTabSessionTabs,
   buildSessionSnapshot: runtimeBuildSessionSnapshot,
@@ -158,6 +169,8 @@ let groupTabOrderState = {};
 const GROUP_TAB_ORDER_KEY = 'groupTabOrder';
 let groupLabelOverrides = {};
 const GROUP_LABEL_OVERRIDES_KEY = 'groupLabelOverrides';
+const AUTOMATIC_GROUPING_RULE_OVERRIDES_KEY = 'automaticTabGroupRuleOverrides';
+let automaticGroupingRuleOverridesPublished = false;
 let groupRenameEditorState = null;
 let draggedGroupId = '';
 let dragStartPoint = null;
@@ -208,6 +221,12 @@ let tabSessionPickerState = {
   savedSessions: [],
 };
 let chromeTabGroupsEnabled = false;
+let chromeTabGroupLiveState = { sessionMap: {}, nativeGroups: [] };
+let chromeTabGroupSnapshotAuthoritative = false;
+let chromeTabGroupSyncGroups = null;
+let chromeTabGroupPreserveKeys = [];
+let chromeTabGroupConflicts = [];
+let chromeGroupMergeDialogState = null;
 let sleepControlEnabled = false;
 let importedChromeGroupMeta = normalizeChromeImportedGroupMeta
   ? normalizeChromeImportedGroupMeta(runtimeEmptyChromeImportedMeta)
@@ -216,6 +235,10 @@ let chromeTabGroupsImportTimer = null;
 let chromeTabGroupsUnsubscribe = null;
 let chromeTabGroupsImportInFlight = false;
 let suppressChromeTabGroupsImportUntil = 0;
+const CHROME_TAB_GROUP_CLEANUP_RETRY_DELAYS_MS = [1000, 5000, 30000, 120000];
+let chromeTabGroupCleanupRetryTimer = null;
+let chromeTabGroupCleanupRetryAttempt = 0;
+let chromeTabGroupCleanupInFlight = null;
 // Search-field suggestion panel state. openSuggestions tracks visibility;
 // suggestionHistoryCache debounces chrome.history lookups while the panel is
 // open so we never query on every keystroke.
@@ -239,14 +262,25 @@ let searchSubmitInFlight = false;
 // their captured generation against this and discard stale results, so their
 // chrome.* calls never contend with a navigation's chrome.* calls.
 let searchSuggestionsGeneration = 0;
+let bookmarksShelfController = null;
 let currentDashboardTabId = null;
 let currentDashboardWindowId = null;
 let dashboardStartupTabChangeIgnoreUntil = 0;
+let tabDrivenDashboardRefreshRunning = false;
+let tabDrivenDashboardRefreshDirty = false;
+let tabDrivenDashboardRefreshDelayMs = 300;
+let tabChangeListenerAttached = false;
 const ENTRY_ANIMATIONS_CLASS = 'entry-animations-enabled';
 let entryAnimationsTimer = null;
 const CHROME_TAB_GROUPS_DEBUG_KEY = 'chromeTabGroupsDebug';
 const HITOKOTO_CACHE_KEY = 'hitokotoCache';
 const HITOKOTO_CACHE_LIMIT = 5;
+const hitokotoPageState = {
+  entry: null,
+  locked: false,
+  rendered: false,
+  warmPromise: null,
+};
 
 function reorderVisibleItemsByIds(items, orderIds, includeItem) {
   if (reorderSubsetByIds) {
@@ -412,10 +446,429 @@ function getTabsOrderedForChromeSync(group) {
 }
 
 function getChromeSyncGroups(groups = domainGroups) {
-  return (Array.isArray(groups) ? groups : []).map(group => ({
-    ...group,
-    tabs: getTabsOrderedForChromeSync(group),
-  }));
+  const source = Array.isArray(chromeTabGroupSyncGroups)
+    ? chromeTabGroupSyncGroups
+    : (Array.isArray(groups) ? groups : []);
+  return source.map(group => Array.isArray(group?.tabIds)
+    ? { ...group, tabIds: group.tabIds.slice() }
+    : { ...group, tabs: getTabsOrderedForChromeSync(group) });
+}
+
+async function sendChromeTabGroupRequest(action, payload = {}) {
+  if (!chrome.runtime?.sendMessage) {
+    return { ok: false, error: { code: 'API_UNAVAILABLE', message: 'Runtime messaging is unavailable' } };
+  }
+  try {
+    return await chrome.runtime.sendMessage({
+      action,
+      source: 'dashboard',
+      payload,
+    });
+  } catch (error) {
+    if (isExtensionContextInvalidated(error)) recoverFromInvalidatedExtensionContext();
+    return {
+      ok: false,
+      error: {
+        code: 'MESSAGE_FAILED',
+        message: error?.message || String(error || 'Chrome tab-group request failed'),
+      },
+    };
+  }
+}
+
+async function performChromeGroupMutation(operation, payload = {}) {
+  const response = await sendChromeTabGroupRequest('merge-chrome-tab-groups', {
+    ...payload,
+    operation,
+  });
+  if (!response?.ok) {
+    const error = new Error(response?.error?.message || 'Chrome tab-group operation failed');
+    error.code = response?.error?.code || 'CHROME_GROUP_OPERATION_FAILED';
+    error.details = response?.error?.details;
+    throw error;
+  }
+  applyChromeTabGroupResponseState(response);
+  return response;
+}
+
+async function getWindowIdForChromeGroupTabs(tabIds = []) {
+  for (const rawTabId of tabIds || []) {
+    const tabId = Number(rawTabId);
+    if (!Number.isInteger(tabId)) continue;
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (Number.isInteger(Number(tab?.windowId))) return Number(tab.windowId);
+    } catch { /* stale id: try the next one */ }
+  }
+  const dashboardWindowId = await getDashboardWindowIdForOpenTabs();
+  return dashboardWindowId == null ? null : Number(dashboardWindowId);
+}
+
+function applyChromeTabGroupResponseState(response) {
+  const state = response?.state;
+  if (!state || typeof state !== 'object') return;
+  chromeTabGroupLiveState = {
+    sessionMap: state.sessionMap || state.mapping || {},
+    nativeGroups: Array.isArray(state.nativeGroups)
+      ? state.nativeGroups
+      : Array.isArray(state.liveGroups)
+        ? state.liveGroups
+        : [],
+  };
+}
+
+function applyChromeTabGroupResponseConflicts(response) {
+  if (!response?.state || !Array.isArray(response?.conflicts)) return false;
+  const backgroundConflicts = (Array.isArray(response?.conflicts) ? response.conflicts : [])
+    .filter(conflict => conflict?.reason === 'multiple-candidates' && conflict.groupKey)
+    .map(conflict => ({
+      ...conflict,
+      title: getAutomaticGroupDisplayTitle({ groupKey: String(conflict.groupKey) }),
+    }));
+  const signature = conflicts => JSON.stringify(conflicts.map(conflict => ({
+    groupKey: String(conflict.groupKey || ''),
+    candidates: (conflict.candidates || []).map(candidate => ({
+      groupId: Number(candidate.id ?? candidate.groupId),
+      title: String(candidate.title || ''),
+      color: String(candidate.color || ''),
+      tabIds: (candidate.tabIds || []).map(Number),
+    })),
+  })));
+  const changed = signature(backgroundConflicts) !== signature(chromeTabGroupConflicts);
+  chromeTabGroupConflicts = backgroundConflicts;
+  return changed;
+}
+
+function hasCreatedChromeTabGroupMappings(state = chromeTabGroupLiveState) {
+  const sessionMap = state?.sessionMap;
+  if (!sessionMap || typeof sessionMap !== 'object') return false;
+  return Object.values(sessionMap).some(windowMap =>
+    windowMap && typeof windowMap === 'object' &&
+      Object.values(windowMap).some(entry => entry?.origin === 'created')
+  );
+}
+
+function clearChromeTabGroupCleanupRetry() {
+  if (chromeTabGroupCleanupRetryTimer) clearTimeout(chromeTabGroupCleanupRetryTimer);
+  chromeTabGroupCleanupRetryTimer = null;
+  chromeTabGroupCleanupRetryAttempt = 0;
+}
+
+function scheduleChromeTabGroupCleanupRetry() {
+  if (chromeTabGroupsEnabled || chromeTabGroupCleanupRetryTimer) return;
+  const delayIndex = Math.min(
+    chromeTabGroupCleanupRetryAttempt,
+    CHROME_TAB_GROUP_CLEANUP_RETRY_DELAYS_MS.length - 1,
+  );
+  const delay = CHROME_TAB_GROUP_CLEANUP_RETRY_DELAYS_MS[delayIndex];
+  chromeTabGroupCleanupRetryAttempt += 1;
+  chromeTabGroupCleanupRetryTimer = setTimeout(() => {
+    chromeTabGroupCleanupRetryTimer = null;
+    void requestChromeTabGroupCleanup();
+  }, delay);
+}
+
+async function requestChromeTabGroupCleanup() {
+  if (chromeTabGroupsEnabled) {
+    clearChromeTabGroupCleanupRetry();
+    return { ok: false, error: { code: 'SYNC_REENABLED', message: 'Chrome tab-group sync is enabled' } };
+  }
+  if (chromeTabGroupCleanupInFlight) return chromeTabGroupCleanupInFlight;
+
+  chromeTabGroupCleanupInFlight = (async () => {
+    const response = await syncChromeTabGroupsWithoutImportEcho();
+    if (response?.ok) clearChromeTabGroupCleanupRetry();
+    else scheduleChromeTabGroupCleanupRetry();
+    return response;
+  })().finally(() => {
+    chromeTabGroupCleanupInFlight = null;
+  });
+  return chromeTabGroupCleanupInFlight;
+}
+
+async function loadChromeTabGroupLiveState(windowId) {
+  const response = await sendChromeTabGroupRequest('get-chrome-tab-group-state', { windowId });
+  if (response?.ok) applyChromeTabGroupResponseState(response);
+  return response;
+}
+
+const TAB_HARBOR_BASE_LANDING_PAGE_PATTERNS = [
+  { hostname: 'mail.google.com', test: (p, h) =>
+      !h.includes('#inbox') && !h.includes('#sent') && !h.includes('#search/') },
+  { hostname: 'x.com', pathExact: ['/home'] },
+  { hostname: 'www.linkedin.com', pathExact: ['/'] },
+  { hostname: 'github.com', pathExact: ['/'] },
+  { hostname: 'www.youtube.com', pathExact: ['/'] },
+];
+
+function matchesAutomaticHostnameSuffix(hostname = '', suffix = '') {
+  if (typeof runtimeMatchesHostnameSuffix === 'function') {
+    return runtimeMatchesHostnameSuffix(hostname, suffix);
+  }
+  const normalizedHostname = String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.+$/, '');
+  const normalizedSuffix = String(suffix || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, '');
+  if (!normalizedHostname || !normalizedSuffix) return false;
+  return normalizedHostname === normalizedSuffix ||
+    normalizedHostname.endsWith(`.${normalizedSuffix}`);
+}
+
+function getAutomaticLandingPagePatterns() {
+  const localPatterns = typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' && Array.isArray(LOCAL_LANDING_PAGE_PATTERNS)
+    ? LOCAL_LANDING_PAGE_PATTERNS
+    : [];
+  if (typeof runtimeGetAutomaticLandingPagePatterns === 'function') {
+    return runtimeGetAutomaticLandingPagePatterns(localPatterns);
+  }
+  return [...TAB_HARBOR_BASE_LANDING_PAGE_PATTERNS, ...localPatterns];
+}
+
+async function publishAutomaticGroupingRuleOverrides() {
+  if (typeof runtimeCreateAutomaticGroupingRuleOverrides !== 'function' ||
+      typeof runtimeNormalizeStoredAutomaticGroupingRuleOverrides !== 'function') {
+    return false;
+  }
+
+  const nextSnapshot = runtimeCreateAutomaticGroupingRuleOverrides({
+    landingPagePatterns: typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' && Array.isArray(LOCAL_LANDING_PAGE_PATTERNS)
+      ? LOCAL_LANDING_PAGE_PATTERNS
+      : [],
+    customGroups: typeof LOCAL_CUSTOM_GROUPS !== 'undefined' && Array.isArray(LOCAL_CUSTOM_GROUPS)
+      ? LOCAL_CUSTOM_GROUPS
+      : [],
+  });
+
+  try {
+    const stored = await chrome.storage.local.get(AUTOMATIC_GROUPING_RULE_OVERRIDES_KEY);
+    const currentSnapshot = runtimeNormalizeStoredAutomaticGroupingRuleOverrides(
+      stored?.[AUTOMATIC_GROUPING_RULE_OVERRIDES_KEY],
+    );
+    if (JSON.stringify(currentSnapshot) !== JSON.stringify(nextSnapshot)) {
+      await chrome.storage.local.set({
+        [AUTOMATIC_GROUPING_RULE_OVERRIDES_KEY]: nextSnapshot,
+      });
+    }
+    return true;
+  } catch (error) {
+    console.warn(
+      '[tab-harbor] Could not publish local grouping rules; native group sync is paused:',
+      error?.message || error,
+    );
+    return false;
+  }
+}
+
+function isAutomaticLandingPage(url = '') {
+  if (typeof runtimeIsAutomaticLandingPage === 'function') {
+    return runtimeIsAutomaticLandingPage(url, getAutomaticLandingPagePatterns());
+  }
+  try {
+    const parsed = new URL(url);
+    return getAutomaticLandingPagePatterns().some(pattern => {
+      const hostnameMatch = pattern.hostname
+        ? parsed.hostname === pattern.hostname
+        : pattern.hostnameEndsWith
+          ? matchesAutomaticHostnameSuffix(parsed.hostname, pattern.hostnameEndsWith)
+          : false;
+      if (!hostnameMatch) return false;
+      if (pattern.test) return pattern.test(parsed.pathname, url);
+      if (pattern.pathPrefix) return parsed.pathname.startsWith(pattern.pathPrefix);
+      if (pattern.pathExact) return pattern.pathExact.includes(parsed.pathname);
+      return parsed.pathname === '/';
+    });
+  } catch {
+    return false;
+  }
+}
+
+function getAutomaticTabGroupDefinition(tab = {}) {
+  if (typeof runtimeGetAutomaticTabGroupDefinition === 'function') {
+    return runtimeGetAutomaticTabGroupDefinition(tab, {
+      landingPagePatterns: typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' && Array.isArray(LOCAL_LANDING_PAGE_PATTERNS)
+        ? LOCAL_LANDING_PAGE_PATTERNS
+        : [],
+      customGroups: typeof LOCAL_CUSTOM_GROUPS !== 'undefined' && Array.isArray(LOCAL_CUSTOM_GROUPS)
+        ? LOCAL_CUSTOM_GROUPS
+        : [],
+    });
+  }
+  const url = String(tab.url || '');
+  if (!url) return null;
+  if (isAutomaticLandingPage(url)) {
+    return { groupKey: '__landing-pages__', label: '' };
+  }
+
+  try {
+    const parsed = new URL(url);
+    const customGroups = typeof LOCAL_CUSTOM_GROUPS !== 'undefined' && Array.isArray(LOCAL_CUSTOM_GROUPS)
+      ? LOCAL_CUSTOM_GROUPS
+      : [];
+    const customRule = customGroups.find(rule => {
+      const hostMatch = rule.hostname
+        ? parsed.hostname === rule.hostname
+        : rule.hostnameEndsWith
+          ? matchesAutomaticHostnameSuffix(parsed.hostname, rule.hostnameEndsWith)
+          : false;
+      if (!hostMatch) return false;
+      return rule.pathPrefix ? parsed.pathname.startsWith(rule.pathPrefix) : true;
+    });
+    if (customRule?.groupKey) {
+      return { groupKey: String(customRule.groupKey), label: String(customRule.groupLabel || '') };
+    }
+    if (parsed.protocol === 'file:') {
+      return { groupKey: 'local-files', label: '' };
+    }
+    const hostname = runtimeGetPrimaryDomain ? runtimeGetPrimaryDomain(parsed.hostname) : parsed.hostname;
+    return hostname ? { groupKey: hostname, label: '' } : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAutomaticGroupDisplayTitle(definition = {}) {
+  if (typeof runtimeGetAutomaticGroupDisplayTitle === 'function') {
+    return runtimeGetAutomaticGroupDisplayTitle(definition, {
+      labelOverrides: groupLabelOverrides,
+      homepagesLabel: runtimeT ? runtimeT('homepagesLabel') : 'Homepages',
+    });
+  }
+  const groupKey = String(definition.groupKey || '');
+  if (!groupKey) return '';
+  if (groupLabelOverrides[groupKey]) return String(groupLabelOverrides[groupKey]).trim();
+  if (definition.label) return String(definition.label).trim();
+  if (groupKey === '__landing-pages__') {
+    return runtimeT ? runtimeT('homepagesLabel') : 'Homepages';
+  }
+  return String(friendlyDomain(groupKey) || groupKey).trim();
+}
+
+function getNativeChromeGroupAnalysis(nativeGroups = [], tabs = [], windowId = null) {
+  if (typeof runtimeAnalyzeNativeChromeGroups === 'function') {
+    return runtimeAnalyzeNativeChromeGroups({
+      nativeGroups,
+      tabs,
+      windowId,
+      labelOverrides: groupLabelOverrides,
+      landingPagePatterns: typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' && Array.isArray(LOCAL_LANDING_PAGE_PATTERNS)
+        ? LOCAL_LANDING_PAGE_PATTERNS
+        : [],
+      customGroups: typeof LOCAL_CUSTOM_GROUPS !== 'undefined' && Array.isArray(LOCAL_CUSTOM_GROUPS)
+        ? LOCAL_CUSTOM_GROUPS
+        : [],
+      sessionGroups: sessionGroupsState,
+      homepagesLabel: runtimeT ? runtimeT('homepagesLabel') : 'Homepages',
+    });
+  }
+  const tabById = new Map((tabs || []).map(tab => [Number(tab.id), tab]));
+  const mappedGroupIds = new Set();
+  const mappedKeysByGroupId = new Map();
+  const rawMappedKeysByGroupId = new Map();
+  const reconcilableCreatedGroupIds = new Set();
+  const unsafeMappedGroupKeys = new Set();
+  const candidatesByKey = new Map();
+  const sessionAssignments = sessionGroupsState?.assignments || {};
+
+  for (const group of nativeGroups || []) {
+    if (windowId != null && Number(group.windowId) !== Number(windowId)) continue;
+    const groupId = Number(group.id ?? group.groupId);
+    const mappings = (Array.isArray(group.mappings) ? group.mappings : [])
+      .filter(mapping => mapping?.groupKey);
+    for (const mapping of mappings) {
+      if (!mapping?.groupKey) continue;
+      rawMappedKeysByGroupId.set(groupId, String(mapping.groupKey));
+    }
+
+    const readable = !group.shared && group.queryComplete !== false &&
+      Array.isArray(group.tabIds) && group.tabIds.length > 0;
+    const definitions = readable
+      ? group.tabIds.map(tabId => getAutomaticTabGroupDefinition(tabById.get(Number(tabId))))
+      : [];
+    const pureDefinition = definitions.length > 0 && definitions.every(definition => definition) &&
+      definitions.every(definition => definition.groupKey === definitions[0].groupKey)
+      ? definitions[0]
+      : null;
+    const logicalKey = String(pureDefinition?.groupKey || '');
+    const displayTitle = pureDefinition ? getAutomaticGroupDisplayTitle(pureDefinition) : '';
+
+    let safeMapping = null;
+    if (mappings.length === 1) {
+      const mapping = mappings[0];
+      const mappingKey = String(mapping.groupKey);
+      const titleMatches = String(group.title || '') === displayTitle;
+      const hasManualAssignments = group.tabIds.some(tabId =>
+        Boolean(sessionAssignments[String(tabId)])
+      );
+      const canReconcileCreatedMapping = mapping.origin === 'created' &&
+        readable && definitions.length > 0 && definitions.every(Boolean) &&
+        !hasManualAssignments;
+      if (canReconcileCreatedMapping) {
+        reconcilableCreatedGroupIds.add(groupId);
+      }
+      const safe = readable && logicalKey === mappingKey &&
+        (mapping.origin === 'created' || titleMatches);
+      if (safe) {
+        safeMapping = mapping;
+        mappedGroupIds.add(groupId);
+        mappedKeysByGroupId.set(groupId, mappingKey);
+      } else {
+        unsafeMappedGroupKeys.add(mappingKey);
+      }
+    } else if (mappings.length > 1) {
+      mappings.forEach(mapping => unsafeMappedGroupKeys.add(String(mapping.groupKey)));
+    }
+
+    // An unsafe mapping remains visible as a native card and is frozen by the
+    // coordinator; never reinterpret it as a fresh candidate in the same
+    // render pass.
+    if (!pureDefinition || (mappings.length > 0 && !safeMapping)) continue;
+    const titleMatches = String(group.title || '') === displayTitle;
+    if (!titleMatches && safeMapping?.origin !== 'created') continue;
+    const groupKey = logicalKey;
+    const candidate = { ...group, groupKey, displayTitle };
+    if (!candidatesByKey.has(groupKey)) candidatesByKey.set(groupKey, []);
+    candidatesByKey.get(groupKey).push(candidate);
+  }
+
+  const uniqueCandidateGroupIds = new Set();
+  const allCandidateGroupIds = new Set();
+  const candidateKeysByGroupId = new Map();
+  const conflicts = [];
+  for (const [groupKey, candidates] of candidatesByKey.entries()) {
+    candidates.sort((left, right) => Number(left.minIndex ?? Number.MAX_SAFE_INTEGER) - Number(right.minIndex ?? Number.MAX_SAFE_INTEGER));
+    for (const candidate of candidates) {
+      const groupId = Number(candidate.id ?? candidate.groupId);
+      allCandidateGroupIds.add(groupId);
+      candidateKeysByGroupId.set(groupId, groupKey);
+    }
+    if (candidates.length === 1) {
+      uniqueCandidateGroupIds.add(Number(candidates[0].id ?? candidates[0].groupId));
+    } else if (candidates.length > 1) {
+      conflicts.push({
+        groupKey,
+        reason: 'multiple-candidates',
+        title: candidates[0].displayTitle || getAutomaticGroupDisplayTitle({ groupKey }),
+        candidates,
+      });
+    }
+  }
+
+  return {
+    mappedGroupIds,
+    mappedKeysByGroupId,
+    rawMappedKeysByGroupId,
+    reconcilableCreatedGroupIds,
+    unsafeMappedGroupKeys,
+    candidatesByKey,
+    candidateKeysByGroupId,
+    uniqueCandidateGroupIds,
+    allCandidateGroupIds,
+    conflicts,
+  };
 }
 
 function isManualGroupKey(groupKey = '') {
@@ -491,9 +944,14 @@ async function submitGroupRenameEditor() {
 
   try {
     if (group.isChromeGroup && group.chromeGroupId != null) {
-      // Renaming a user-created Chrome group card renames the native group.
-      if (typeof muteChromeGroupEvents === 'function') muteChromeGroupEvents();
-      await chrome.tabGroups.update(Number(group.chromeGroupId), { title: cleanName });
+      // Native group writes are serialized by the background coordinator.
+      const windowId = await getWindowIdForChromeGroupTabs((group.tabs || []).map(tab => tab.id));
+      if (windowId == null) throw new Error('Chrome group window is unavailable');
+      await performChromeGroupMutation('update', {
+        windowId,
+        targetGroupId: Number(group.chromeGroupId),
+        changes: { title: cleanName },
+      });
     } else if (manualGroupId) {
       const nextState = renameSessionGroup(sessionGroupsState, manualGroupId, cleanName);
       await saveSessionGroups(nextState);
@@ -828,16 +1286,17 @@ function ensureManualDropGroup(state, targetGroupKey) {
    ---------------------------------------------------------------- */
 
 async function fetchHitokoto(timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const response = await fetch('https://v1.hitokoto.cn/', { signal: controller.signal });
-    clearTimeout(timeoutId);
     if (!response || !response.ok) return null;
     const data = await response.json();
     return data || null;
   } catch (err) {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -888,27 +1347,59 @@ function setHitokotoContent(textEl, fromEl, data) {
   return true;
 }
 
-function renderCachedHitokoto(textEl, fromEl) {
-  return setHitokotoContent(textEl, fromEl, getHitokotoCache()[0]);
+function lockHitokotoForCurrentPage() {
+  if (hitokotoPageState.locked) return hitokotoPageState.entry;
+  hitokotoPageState.entry = normalizeHitokotoEntry(getHitokotoCache()[0]);
+  hitokotoPageState.locked = true;
+  return hitokotoPageState.entry;
 }
 
-function refreshHitokotoInBackground(textEl, fromEl) {
-  fetchHitokoto().then(data => {
-    if (typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled === false) return;
-    const entry = addHitokotoToCache(data);
-    if (!entry) return;
-    if (setHitokotoContent(textEl, fromEl, entry)) {
-      const hitokotoEl = document.getElementById('hitokoto');
-      if (hitokotoEl) hitokotoEl.style.display = '';
-    }
-  }).catch(() => { /* silently fail */ });
+function renderCachedHitokoto(textEl, fromEl) {
+  const entry = lockHitokotoForCurrentPage();
+  if (!entry) return false;
+  if (!hitokotoPageState.rendered) {
+    hitokotoPageState.rendered = setHitokotoContent(
+      textEl,
+      fromEl,
+      entry,
+    );
+  }
+  return hitokotoPageState.rendered;
 }
 
 function warmHitokotoCacheInBackground() {
-  fetchHitokoto().then(data => {
-    if (typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled === false) return;
-    addHitokotoToCache(data);
-  }).catch(() => { /* silently fail */ });
+  if (hitokotoPageState.warmPromise) return hitokotoPageState.warmPromise;
+  hitokotoPageState.warmPromise = fetchHitokoto()
+    .then(data => addHitokotoToCache(data))
+    .catch(() => null);
+  return hitokotoPageState.warmPromise;
+}
+
+function syncHitokotoForCurrentPage() {
+  const hitokotoEl = document.getElementById('hitokoto');
+  const hitokotoTextEl = document.getElementById('hitokotoText');
+  const hitokotoFromEl = document.getElementById('hitokotoFrom');
+  if (!hitokotoEl || !hitokotoTextEl || !hitokotoFromEl) return false;
+
+  // Lock the instance before checking visibility. A page opened while the
+  // feature is disabled must not select a newer cache entry when re-enabled.
+  lockHitokotoForCurrentPage();
+  const enabled = typeof themePreferences !== 'undefined'
+    ? themePreferences.hitokotoEnabled !== false
+    : true;
+  if (!enabled) {
+    // Keep the locked text in place so re-enabling reveals the same instance
+    // value instead of selecting a newer cache entry.
+    hitokotoEl.style.display = 'none';
+    return false;
+  }
+
+  const hasHitokoto = renderCachedHitokoto(hitokotoTextEl, hitokotoFromEl);
+  hitokotoEl.style.display = hasHitokoto ? '' : 'none';
+  // This request is only for the next new-tab instance. Completion updates the
+  // cache and never calls a renderer for the current page.
+  void warmHitokotoCacheInBackground();
+  return hasHitokoto;
 }
 
 /**
@@ -1056,9 +1547,61 @@ function primeEntryAnimations(durationMs = 1200) {
 }
 
 async function syncChromeTabGroupsWithoutImportEcho() {
-  if (typeof syncChromeTabGroups !== 'function') return;
   suppressChromeTabGroupsImport();
-  await syncChromeTabGroups(getChromeSyncGroups(domainGroups));
+  if (chromeTabGroupsEnabled && !chromeTabGroupSnapshotAuthoritative) {
+    return {
+      ok: false,
+      action: 'sync',
+      error: {
+        code: 'NON_AUTHORITATIVE_SNAPSHOT',
+        message: 'Chrome tab-group sync skipped because the live snapshot is incomplete',
+      },
+    };
+  }
+  const windowId = await getDashboardWindowIdForOpenTabs();
+  if (windowId == null) return;
+  let colorIndex = 0;
+  const groups = getChromeSyncGroups(domainGroups)
+    .filter(group => !group.isManual && !group.isChromeGroup && !group.isChromeGroupConflict)
+    .map(group => {
+      if (Array.isArray(group.tabIds)) {
+        return {
+          groupKey: String(group.groupKey || group.domain || ''),
+          title: String(group.title || ''),
+          color: String(group.color || 'grey'),
+          collapsed: group.collapsed === true,
+          tabIds: group.tabIds.map(Number).filter(Number.isInteger),
+        };
+      }
+      const groupKey = String(group.domain || group.groupKey || '');
+      const tabIds = (group.tabs || [])
+        .map(tab => Number(tab?.id))
+        .filter(Number.isInteger);
+      const color = typeof runtimeAssignGroupColor === 'function'
+        ? runtimeAssignGroupColor(groupKey, colorIndex)
+        : 'grey';
+      if (!groupKey.startsWith(MANUAL_GROUP_PREFIX)) colorIndex += 1;
+      return {
+        groupKey,
+        title: getAutomaticGroupDisplayTitle({ groupKey, label: group.label || '' }),
+        color,
+        collapsed: true,
+        tabIds,
+      };
+    })
+    .filter(group => group.groupKey && group.tabIds.length > 0);
+  const response = await sendChromeTabGroupRequest('sync-chrome-tab-groups', {
+    windowId: Number(windowId),
+    enabled: chromeTabGroupsEnabled,
+    allWindows: !chromeTabGroupsEnabled,
+    preserveGroupKeys: chromeTabGroupsEnabled ? chromeTabGroupPreserveKeys : [],
+    groups: chromeTabGroupsEnabled ? groups : [],
+  });
+  applyChromeTabGroupResponseState(response);
+  if (applyChromeTabGroupResponseConflicts(response)) {
+    renderOpenTabsSummary(getRealTabs());
+  }
+  return response;
 }
 
 function disableChromeTabGroupsImportModeForLocalEdits() {
@@ -1072,6 +1615,67 @@ function shouldImportChromeGroupsIntoSessionState() {
   // which would mark them managed and hide the cards. Keeping the function
   // lets the toggle/refresh wiring short-circuit cleanly.
   return false;
+}
+
+function getChromeGroupEventWindowIds(event = {}) {
+  return [
+    event?.group?.windowId,
+    event?.tab?.windowId,
+    event?.moveInfo?.windowId,
+    event?.removeInfo?.windowId,
+    event?.attachInfo?.newWindowId,
+    event?.detachInfo?.oldWindowId,
+  ]
+    .map(value => Number(value))
+    .filter(Number.isInteger);
+}
+
+function isChromeGroupEventForCurrentDashboard(event = {}) {
+  if (currentDashboardWindowId == null) return true;
+  const eventWindowIds = getChromeGroupEventWindowIds(event);
+  if (eventWindowIds.length === 0) return true;
+  return eventWindowIds.includes(Number(currentDashboardWindowId));
+}
+
+function armTabDrivenDashboardRefresh(delayMs) {
+  if (window.__tabRefreshTimeout) clearTimeout(window.__tabRefreshTimeout);
+  window.__tabRefreshTimeout = setTimeout(() => {
+    window.__tabRefreshTimeout = null;
+    void runTabDrivenDashboardRefresh();
+  }, Math.max(0, Number(delayMs) || 0));
+}
+
+async function runTabDrivenDashboardRefresh() {
+  if (tabDrivenDashboardRefreshRunning || !tabDrivenDashboardRefreshDirty) return;
+  tabDrivenDashboardRefreshRunning = true;
+  tabDrivenDashboardRefreshDirty = false;
+  try {
+    // The service worker owns event-driven native-group writes. Dashboard
+    // listeners only refresh their window's visible state, otherwise one
+    // Chrome event would submit a second copy of the same desired snapshot.
+    await renderDashboard({ syncChromeGroups: false });
+    updateBackToTopVisibility();
+    if (typeof window.__tabHarborSuggestionsRefresh === 'function') {
+      window.__tabHarborSuggestionsRefresh();
+    }
+  } catch (err) {
+    console.warn('[tab-harbor] Failed to refresh dashboard:', err);
+    if (isExtensionContextInvalidated(err)) recoverFromInvalidatedExtensionContext();
+  } finally {
+    tabDrivenDashboardRefreshRunning = false;
+    if (tabDrivenDashboardRefreshDirty) {
+      // Events received during the asynchronous DOM rebuild are represented
+      // by one trailing refresh. They never start a concurrent render.
+      armTabDrivenDashboardRefresh(tabDrivenDashboardRefreshDelayMs);
+    }
+  }
+}
+
+function scheduleTabDrivenDashboardRefresh(delayMs = 300) {
+  tabDrivenDashboardRefreshDirty = true;
+  tabDrivenDashboardRefreshDelayMs = Math.max(0, Number(delayMs) || 0);
+  if (tabDrivenDashboardRefreshRunning) return;
+  armTabDrivenDashboardRefresh(tabDrivenDashboardRefreshDelayMs);
 }
 
 function ensureChromeTabGroupsSubscription() {
@@ -1089,6 +1693,18 @@ function ensureChromeTabGroupsSubscription() {
 
   if (chromeTabGroupsUnsubscribe) return;
   chromeTabGroupsUnsubscribe = subscribeToChromeTabGroupChanges((event = {}) => {
+    if (event?.source === 'storage.onChanged') {
+      chromeTabGroupsEnabled = event.enabled === true;
+      if (!chromeTabGroupsEnabled) {
+        if (chromeTabGroupsImportTimer) clearTimeout(chromeTabGroupsImportTimer);
+        chromeTabGroupsImportTimer = null;
+        if (typeof setImportMode === 'function') setImportMode(false);
+        void requestChromeTabGroupCleanup();
+      } else {
+        clearChromeTabGroupCleanupRetry();
+      }
+      renderThemeMenu();
+    }
     // C14: a tab dragged into a native group OUTSIDE the dashboard (browser
     // strip drag, another window's new-tab page, context menu) leaves a stale
     // manual-group assignment behind. When the event carries a tab that now
@@ -1126,16 +1742,13 @@ function ensureChromeTabGroupsSubscription() {
       void resolveCleanup(rawTabId);
     }
 
+    if (!isChromeGroupEventForCurrentDashboard(event)) return;
+
     // Live card recognition is a pure read — never gate it on the push/import
     // suppression windows (those exist to stop sync echo). Browser group
     // changes re-render the cards even when the sync toggle is off.
-    if (Date.now() >= (window.__suppressAutoRefreshUntil || 0)) {
-      if (window.__chromeGroupCardRefreshTimer) clearTimeout(window.__chromeGroupCardRefreshTimer);
-      window.__chromeGroupCardRefreshTimer = setTimeout(() => {
-        window.__chromeGroupCardRefreshTimer = null;
-        void renderDashboard();
-      }, 200);
-    }
+    const suppressionRemaining = Math.max(0, (window.__suppressAutoRefreshUntil || 0) - Date.now());
+    scheduleTabDrivenDashboardRefresh(suppressionRemaining + 200);
     // Push/import side stays gated by the toggle and the echo windows.
     if (chromeTabGroupsEnabled && !isChromeTabGroupsImportSuppressed()) {
       scheduleChromeTabGroupsImport();
@@ -1265,12 +1878,15 @@ async function applyChromeTabGroupsToggle(nextEnabled) {
     await saveImportedChromeGroupMeta(cleared.importedMeta);
   }
 
-  // When the user turns the Chrome-group sync toggle off, also tear down the
-  // dashboard-managed mirror groups instead of leaving them hidden and
-  // unmanageable (C16). syncChromeTabGroups sees cachedEnabled=false and calls
-  // removeAllChromeGroups().
+  // Turning sync off also requests all-window cleanup. A transient Chrome API
+  // failure leaves sync disabled (so no new writes can occur) but schedules a
+  // visible, retryable cleanup instead of pretending every created group was
+  // already dismantled.
+  let cleanupResponse = null;
   if (!enable) {
-    await syncChromeTabGroupsWithoutImportEcho();
+    cleanupResponse = await requestChromeTabGroupCleanup();
+  } else {
+    clearChromeTabGroupCleanupRetry();
   }
 
   ensureChromeTabGroupsSubscription();
@@ -1283,9 +1899,14 @@ async function applyChromeTabGroupsToggle(nextEnabled) {
     window.__tabRefreshTimeout = null;
   }
   window.__suppressAutoRefreshUntil = 0;
-  showToast(enable
+  const toastMessage = enable
     ? (runtimeT ? runtimeT('toastChromeTabGroupsOn') : 'Chrome tab groups on')
-    : (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off'));
+    : cleanupResponse?.ok
+      ? (runtimeT ? runtimeT('toastChromeTabGroupsOff') : 'Chrome tab groups off')
+      : (runtimeT
+          ? runtimeT('toastChromeTabGroupsOffCleanupPending')
+          : 'Chrome tab-group sync is off; cleanup will retry');
+  showToast(toastMessage);
 }
 
 async function loadGroupOrder() {
@@ -1583,24 +2204,33 @@ async function closeDuplicatesInSelection(tabIds, { playSound = true } = {}) {
 }
 
 async function mergeTabsIntoChromeGroup(tabIds, { title, color }) {
-  // The write is muted so the dashboard's own group event cannot echo.
-  if (typeof muteChromeGroupEvents === 'function') muteChromeGroupEvents();
-  const { groupId, mergedTabIds } = await groupTabsWithStaleRetry(tabIds);
-  // `title` may be a function (mergedIds) => label: count-based labels must
-  // use the ACTUAL merged ids — stale ids dropped by groupTabsWithStaleRetry
-  // would otherwise inflate the count in the group title.
-  const label = typeof title === 'function' ? title(mergedTabIds) : title;
-  // The group is already created at this point. A rename/color failure must
-  // not be reported as "could not create the group" — the caller needs to
-  // know the side effect happened so it can still clean up (C5).
-  let updated = true;
-  try {
-    await chrome.tabGroups.update(groupId, { title: label, color });
-  } catch (err) {
-    updated = false;
-    console.warn('[tab-harbor] mergeTabsIntoChromeGroup: group created but update failed:', err);
+  const requestedIds = (tabIds || []).map(Number).filter(Number.isInteger);
+  const liveTabs = [];
+  for (const tabId of requestedIds) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab && !tab.pinned) liveTabs.push(tab);
+    } catch { /* stale ids are dropped before the background revalidation */ }
   }
-  return { groupId, updated, mergedTabIds };
+  const liveIds = liveTabs.map(tab => Number(tab.id));
+  if (!liveIds.length) throw new Error('No eligible tabs remain');
+  // `title` may be a function (mergedIds) => label: count-based labels must
+  // use the live ids — stale ids dropped before the background request
+  // would otherwise inflate the count in the group title.
+  const label = typeof title === 'function' ? title(liveIds) : title;
+  const windowId = Number(liveTabs[0].windowId);
+  const response = await performChromeGroupMutation('create', {
+    windowId,
+    tabIds: liveIds,
+    orderedTabIds: liveIds,
+    title: String(label || ''),
+    color: String(color || 'grey'),
+  });
+  return {
+    groupId: response.groupId,
+    updated: response.updated !== false,
+    mergedTabIds: response.mergedTabIds || liveIds,
+  };
 }
 
 async function sleepTabsByIds(tabIds, { skipActive = true } = {}) {
@@ -2240,27 +2870,20 @@ async function restoreChromeGroupsForSession(plans, windowId) {
 
     if (typeof muteChromeGroupEvents === 'function') muteChromeGroupEvents();
     try {
-      // Chrome creates the new group in the CALLER's window by default, which
-      // would drag tabs created in the restore target window across windows
-      // (observed: new-window restore split the session across two windows,
-      // chrome-group tabs flashing into the dashboard window). Pinning the new
-      // group to the target window via createProperties.windowId keeps every
-      // restored tab in place — the group appears directly in the target
-      // window with no tab relocation.
-      const groupOptions = windowId != null
-        ? { tabIds: planTabIds, createProperties: { windowId: Number(windowId) } }
-        : { tabIds: planTabIds };
-      const groupId = await chrome.tabs.group(groupOptions);
-      if (groupId == null) continue;
-      await chrome.tabGroups.update(groupId, {
+      // The service-worker coordinator pins creation to the restored window,
+      // revalidates every tab, applies the recorded appearance, and restores
+      // the saved order as one globally serialized operation.
+      const targetWindowId = Number.isInteger(Number(windowId))
+        ? Number(windowId)
+        : await getWindowIdForChromeGroupTabs(planTabIds);
+      if (!Number.isInteger(targetWindowId)) continue;
+      await performChromeGroupMutation('create', {
+        windowId: targetWindowId,
+        tabIds: planTabIds,
+        orderedTabIds: planTabIds,
         title,
         color: String(plan?.color || 'grey'),
       });
-      // The tabs were created in recorded order; reorder the native group to
-      // match the saved in-group order exactly.
-      if (typeof reorderGroupedTabs === 'function') {
-        await reorderGroupedTabs(groupId, planTabIds.map(String), windowId);
-      }
     } catch (err) {
       console.warn('[tab-harbor] restoreChromeGroupsForSession failed:', err);
     }
@@ -3363,9 +3986,6 @@ async function focusTab(url, tabId = null) {
       if (targetTab?.id != null) {
         await chrome.tabs.update(targetTab.id, { active: true });
         await chrome.windows.update(targetTab.windowId, { focused: true });
-        if (typeof syncChromeTabGroupExpansionForTab === 'function') {
-          await syncChromeTabGroupExpansionForTab(targetTab);
-        }
         return true;
       }
     } catch { /* fall back to URL matching */ }
@@ -3393,9 +4013,6 @@ async function focusTab(url, tabId = null) {
   const match = matches.find(t => t.active) || matches[0];
   await chrome.tabs.update(match.id, { active: true });
   await chrome.windows.update(match.windowId, { focused: true });
-  if (typeof syncChromeTabGroupExpansionForTab === 'function') {
-    await syncChromeTabGroupExpansionForTab(match);
-  }
   return true;
 }
 
@@ -3516,13 +4133,14 @@ async function runDefaultSearch(query) {
    Sources (union, de-duplicated by URL):
      1. open tabs in the current window (type 'tab')
      2. quick shortcuts (type 'shortcut')
-     3. saved session tabs (type 'session')
-     4. browser history (type 'history') — only when chrome.history exists
+     3. Chrome bookmarks (type 'bookmark')
+     4. saved session tabs (type 'session')
+     5. browser history (type 'history') — only when chrome.history exists
    The panel is keyboard-navigable (ArrowUp/Down, Enter, Escape) and follows
    the quiet visual language of the rest of the dashboard.
    ---------------------------------------------------------------- */
 
-const SEARCH_SUGGESTION_SOURCES = ['tab', 'shortcut', 'session', 'history'];
+const SEARCH_SUGGESTION_SOURCES = ['tab', 'shortcut', 'bookmark', 'session', 'history'];
 const SEARCH_SUGGESTIONS_MAX = 12;
 const SEARCH_HISTORY_CACHE_TTL_MS = 30000;
 const SEARCH_SUGGESTION_DEBOUNCE_MS = 120;
@@ -3539,10 +4157,66 @@ function searchSuggestionsAvailable() {
   return typeof chrome !== 'undefined' && !!chrome.history && typeof chrome.history.search === 'function';
 }
 
+function getBookmarksShelfMessages() {
+  const message = (key, fallback) => runtimeT ? runtimeT(key) : fallback;
+  return {
+    shelfLabel: message('bookmarksShelfLabel', 'Chrome bookmarks'),
+    searchLabel: message('bookmarksSearchLabel', 'Search bookmarks'),
+    searchPlaceholder: message('bookmarksSearchPlaceholder', 'Search bookmarks…'),
+    openManager: message('bookmarksOpenManager', 'Open bookmark manager'),
+    enableTitle: message('bookmarksEnableTitle', 'Keep bookmarks close'),
+    enableBody: message('bookmarksEnableBody', 'Allow read-only access. Nothing is copied or changed.'),
+    enableAction: message('bookmarksEnableAction', 'Show bookmarks'),
+    deniedTitle: message('bookmarksDeniedTitle', 'Bookmark access was not granted'),
+    deniedBody: message('bookmarksDeniedBody', 'You can try again whenever you like.'),
+    revokedTitle: message('bookmarksRevokedTitle', 'Bookmark access was removed'),
+    revokedBody: message('bookmarksRevokedBody', 'Enable it again to browse here.'),
+    checking: message('bookmarksChecking', 'Checking bookmark access…'),
+    loading: message('bookmarksLoading', 'Opening your bookmarks…'),
+    searching: message('bookmarksSearching', 'Searching bookmarks…'),
+    emptyFolder: message('bookmarksEmptyFolder', 'This folder is empty.'),
+    emptySearch: message('bookmarksEmptySearch', 'No matching bookmarks.'),
+    emptyTree: message('bookmarksEmptyTree', 'The bookmarks bar is empty.'),
+    errorTitle: message('bookmarksErrorTitle', 'Bookmarks are quiet for the moment'),
+    errorBody: message('bookmarksErrorBody', 'Chrome could not return them. Nothing was changed.'),
+    retry: message('bookmarksRetry', 'Try again'),
+    folderLabel: message('bookmarksFolderLabel', 'Folder'),
+    bookmarkLabel: message('bookmarksBookmarkLabel', 'Bookmark'),
+    breadcrumbsLabel: message('bookmarksBreadcrumbsLabel', 'Bookmark folders'),
+    rootFallback: message('bookmarksRootFallback', 'Bookmarks'),
+    clearSearch: message('bookmarksClearSearch', 'Clear'),
+    blockedUrl: message('bookmarksBlockedUrl', 'This bookmark type cannot be opened here.'),
+    openFailed: message('bookmarksOpenFailed', 'This bookmark could not be opened.'),
+  };
+}
+
+function setupBookmarksShelf() {
+  if (bookmarksShelfController) return bookmarksShelfController;
+  const host = document.getElementById('bookmarksShelfHost');
+  const mountShelf = globalThis.TabHarborBookmarksShelf?.mountBookmarksShelf;
+  if (!host || typeof mountShelf !== 'function') return null;
+
+  const refreshOpenSuggestions = () => {
+    if (searchSuggestionsOpen) void refreshSearchSuggestions(true);
+  };
+  bookmarksShelfController = mountShelf(host, {
+    chromeApi: chrome,
+    document,
+    location,
+    getFaviconUrl: runtimeGetFaviconUrl,
+    showFavicons: typeof themePreferences !== 'undefined' && themePreferences.bookmarksShowFavicons === true,
+    messages: getBookmarksShelfMessages(),
+    onStateChange: refreshOpenSuggestions,
+    onBookmarksChange: refreshOpenSuggestions,
+  });
+  return bookmarksShelfController;
+}
+
 function getSearchSuggestionSectionLabel(type) {
   switch (type) {
     case 'tab': return runtimeT ? runtimeT('suggestSectionTabs') : 'Open tabs';
     case 'shortcut': return runtimeT ? runtimeT('suggestSectionShortcuts') : 'Quick links';
+    case 'bookmark': return runtimeT ? runtimeT('suggestSectionBookmarks') : 'Bookmarks';
     case 'session': return runtimeT ? runtimeT('suggestSectionSessions') : 'Saved sessions';
     case 'history': return runtimeT ? runtimeT('suggestSectionHistory') : 'History';
     default: return '';
@@ -3579,7 +4253,13 @@ async function loadSearchSuggestionSources() {
     })(),
   ]);
 
-  return { tabs, shortcuts, sessions };
+  // Reading the controller's in-memory snapshot never requests permission.
+  // Only the explicit button inside the bookmarks shelf may do that.
+  const bookmarks = typeof bookmarksShelfController?.getSearchItems === 'function'
+    ? bookmarksShelfController.getSearchItems()
+    : [];
+
+  return { tabs, shortcuts, bookmarks, sessions };
 }
 
 async function loadSearchHistoryCache() {
@@ -3621,13 +4301,6 @@ async function refreshSearchSuggestions(force = false) {
   const panel = getSearchSuggestionsPanel();
   if (!input || !panel) return;
 
-  // Capture the generation at start; if the user submits the search (or the
-  // page otherwise invalidates suggestions) mid-refresh, the in-flight
-  // chrome.* calls become stale and their results are discarded instead of
-  // being rendered — this keeps the suggestion refresh from contending with
-  // the navigation's chrome.* calls in the extension page's API queue.
-  const gen = searchSuggestionsGeneration;
-
   const query = input.value || '';
   if (query === searchSuggestionsQuery && !force) return;
 
@@ -3638,6 +4311,9 @@ async function refreshSearchSuggestions(force = false) {
     return;
   }
 
+  // Every request receives its own token. A newer query, a submit, or a panel
+  // close invalidates all older async source reads before they can touch DOM.
+  const gen = ++searchSuggestionsGeneration;
   searchSuggestionsQuery = query;
 
   const [sources, history] = await Promise.all([
@@ -3646,25 +4322,20 @@ async function refreshSearchSuggestions(force = false) {
   ]);
   // A search was submitted (or the panel otherwise invalidated) while we were
   // awaiting chrome.* — discard this stale refresh instead of rendering it.
-  if (gen !== searchSuggestionsGeneration) return;
-  const allRows = [
-    ...sources.tabs.map(tab => ({ type: 'tab', url: tab.url, title: tab.title || tab.url, favIconUrl: tab.favIconUrl, tabId: tab.id, windowId: tab.windowId })),
-    ...sources.shortcuts.map(shortcut => ({ type: 'shortcut', url: shortcut.url, title: shortcut.label || shortcut.url, label: shortcut.label || '', favIconUrl: shortcut.icon || '' })),
-    ...sources.sessions.map(session => ({
-      type: 'session',
-      url: session.url,
-      title: session.title || session.url,
-      label: session.label || '',
-      favIconUrl: session.favIconUrl || '',
-    })),
-    ...history.map(item => ({ type: 'history', url: item.url, title: item.title || item.url, favIconUrl: '', visitCount: item.visitCount, lastVisitTime: item.lastVisitTime })),
-  ];
-
+  if (gen !== searchSuggestionsGeneration || input.value !== query) return;
   let rows;
-  if (typeof globalThis.TabHarborSearchSuggestions?.filterSuggestions === 'function') {
-    rows = globalThis.TabHarborSearchSuggestions.filterSuggestions(allRows, query);
+  if (typeof globalThis.TabHarborSearchSuggestions?.assembleSuggestions === 'function') {
+    rows = globalThis.TabHarborSearchSuggestions.assembleSuggestions({
+      ...sources,
+      history,
+    }, query);
   } else {
-    rows = allRows.slice(0, SEARCH_SUGGESTIONS_MAX);
+    rows = [
+      ...sources.tabs.map(tab => ({ type: 'tab', url: tab.url, title: tab.title || tab.url, tabId: tab.id })),
+      ...sources.shortcuts.map(shortcut => ({ type: 'shortcut', url: shortcut.url, title: shortcut.label || shortcut.url })),
+      ...sources.bookmarks.map(bookmark => ({ type: 'bookmark', bookmarkId: bookmark.id, url: bookmark.url, title: bookmark.title || bookmark.url, folderPath: bookmark.folderPath || '' })),
+      ...history.map(item => ({ type: 'history', url: item.url, title: item.title || item.url })),
+    ].slice(0, SEARCH_SUGGESTIONS_MAX);
   }
   searchSuggestionsRows = rows;
 
@@ -3680,11 +4351,13 @@ async function refreshSearchSuggestions(force = false) {
 function renderSearchSuggestions(rows = [], query = '') {
   const panel = getSearchSuggestionsPanel();
   if (!panel) return;
+  const input = getSearchSuggestionsInput();
+  input?.removeAttribute('aria-activedescendant');
+  searchSuggestionsSelectedIndex = -1;
 
   if (!rows.length) {
     panel.innerHTML = '';
     panel.hidden = true;
-    const input = getSearchSuggestionsInput();
     if (input) input.setAttribute('aria-expanded', 'false');
     return;
   }
@@ -3705,15 +4378,35 @@ function renderSearchSuggestions(rows = [], query = '') {
     groupRows.forEach(row => {
       const safeTitle = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(row.title || row.url || '') : String(row.title || row.url || '').replace(/"/g, '&quot;');
       const safeUrl = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(row.url || '') : String(row.url || '').replace(/"/g, '&quot;');
-      const iconData = runtimeGetIconSources ? runtimeGetIconSources(row, 16) : { sources: [] };
-      const faviconUrl = iconData.sources?.[0] || '';
-      const fallbackUrl = iconData.sources?.[1] || '';
+      const bookmarksShowFavicons = typeof themePreferences !== 'undefined'
+        && themePreferences.bookmarksShowFavicons === true;
+      const shouldResolveIcon = row.type !== 'bookmark' || bookmarksShowFavicons;
+      const iconData = shouldResolveIcon && runtimeGetIconSources
+        ? runtimeGetIconSources(row, 16)
+        : { sources: [] };
+      const selectIconSources = globalThis.TabHarborSearchSuggestions?.selectSuggestionIconSources;
+      const selectedIconSources = typeof selectIconSources === 'function'
+        ? selectIconSources(row, iconData.sources, {
+            bookmarksShowFavicons,
+          })
+        : row.type === 'bookmark'
+          ? { faviconUrl: '', fallbackUrl: '' }
+          : {
+              faviconUrl: iconData.sources?.[0] || '',
+              fallbackUrl: iconData.sources?.[1] || '',
+            };
+      const faviconUrl = selectedIconSources.faviconUrl || '';
+      const fallbackUrl = selectedIconSources.fallbackUrl || '';
       const fallbackLabel = runtimeGetFallbackLabel ? runtimeGetFallbackLabel(row.title || row.url, iconData.hostname) : '';
+      const safeFaviconUrl = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(faviconUrl) : String(faviconUrl).replace(/"/g, '&quot;');
       const safeFallbackUrl = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(fallbackUrl) : String(fallbackUrl).replace(/"/g, '&quot;');
-      html += `<div class="header-search-suggestion-row" role="option" data-suggestion-type="${row.type}" data-suggestion-url="${safeUrl}" data-suggestion-tab-id="${row.tabId != null ? row.tabId : ''}" aria-selected="false" tabindex="-1">
-        <span class="header-search-suggestion-icon">${faviconUrl ? `<img src="${faviconUrl}" alt="" data-fallback-src="${safeFallbackUrl}">` : ''}</span>
+      const resultId = getSearchSuggestionResultId(row);
+      const safeBookmarkId = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(row.bookmarkId || '') : String(row.bookmarkId || '').replace(/"/g, '&quot;');
+      const supportingText = row.type === 'bookmark' && row.folderPath ? row.folderPath : row.url || '';
+      html += `<div class="header-search-suggestion-row" id="${resultId}" role="option" data-suggestion-type="${row.type}" data-suggestion-url="${safeUrl}" data-suggestion-tab-id="${row.tabId != null ? row.tabId : ''}" data-suggestion-bookmark-id="${safeBookmarkId}" aria-selected="false" tabindex="-1">
+        <span class="header-search-suggestion-icon">${faviconUrl ? `<img src="${safeFaviconUrl}" alt="" data-fallback-src="${safeFallbackUrl}">` : ''}</span>
         <span class="header-search-suggestion-title">${runtimeEscapeHtml ? runtimeEscapeHtml(row.title || row.url) : String(row.title || row.url)}</span>
-        <span class="header-search-suggestion-url">${runtimeEscapeHtml ? runtimeEscapeHtml(row.url || '') : String(row.url || '')}</span>
+        <span class="header-search-suggestion-url">${runtimeEscapeHtml ? runtimeEscapeHtml(supportingText) : String(supportingText)}</span>
       </div>`;
     });
     html += '</div>';
@@ -3721,9 +4414,18 @@ function renderSearchSuggestions(rows = [], query = '') {
 
   panel.innerHTML = html;
   panel.hidden = false;
-  const input = getSearchSuggestionsInput();
   if (input) input.setAttribute('aria-expanded', 'true');
   setupSearchSuggestionImageFallbacks(panel);
+}
+
+function getSearchSuggestionResultId(row = {}) {
+  const source = `${row.type || 'result'}|${row.tabId ?? row.bookmarkId ?? row.url ?? ''}`;
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `header-search-result-${(hash >>> 0).toString(36)}`;
 }
 
 function setupSearchSuggestionImageFallbacks(panel) {
@@ -3758,6 +4460,7 @@ function closeSearchSuggestions({ restoreFocus = false } = {}) {
   }
   const input = getSearchSuggestionsInput();
   if (input) input.setAttribute('aria-expanded', 'false');
+  input?.removeAttribute('aria-activedescendant');
   searchSuggestionsOpen = false;
   searchSuggestionsSelectedIndex = -1;
   searchSuggestionsRows = [];
@@ -3786,16 +4489,29 @@ function selectSearchSuggestionIndex(nextIndex) {
     row.classList.toggle('is-selected', selected);
     row.setAttribute('aria-selected', String(selected));
     if (selected) {
+      getSearchSuggestionsInput()?.setAttribute('aria-activedescendant', row.id);
       row.scrollIntoView({ block: 'nearest' });
     }
   });
 }
 
-async function activateSearchSuggestion(row, { openInNewTab = false } = {}) {
+async function activateSearchSuggestion(row, { openInNewTab = false, shiftKey = false, button = 0 } = {}) {
   if (!row) return;
   const type = row.dataset.suggestionType || '';
   const url = row.dataset.suggestionUrl || '';
   const tabId = row.dataset.suggestionTabId || '';
+  const bookmarkId = row.dataset.suggestionBookmarkId || '';
+
+  if (type === 'bookmark' && bookmarkId && bookmarksShelfController?.openBookmark) {
+    closeSearchSuggestions();
+    await bookmarksShelfController.openBookmark(bookmarkId, {
+      ctrlKey: openInNewTab,
+      metaKey: openInNewTab,
+      shiftKey,
+      button,
+    });
+    return;
+  }
 
   if (type === 'tab' && tabId && !openInNewTab) {
     const numericTabId = getTabIdValue(tabId);
@@ -3806,9 +4522,6 @@ async function activateSearchSuggestion(row, { openInNewTab = false } = {}) {
         if (targetTab?.id != null) {
           await chrome.tabs.update(targetTab.id, { active: true });
           await chrome.windows.update(targetTab.windowId, { focused: true });
-          if (typeof syncChromeTabGroupExpansionForTab === 'function') {
-            await syncChromeTabGroupExpansionForTab(targetTab);
-          }
           return;
         }
       } catch { /* fall through to URL open */ }
@@ -3817,7 +4530,14 @@ async function activateSearchSuggestion(row, { openInNewTab = false } = {}) {
 
   if (!url) return;
   closeSearchSuggestions();
-  if (openInNewTab) {
+  if (shiftKey) {
+    await chrome.windows.create({ url, focused: true }).catch(err => {
+      if (isExtensionContextInvalidated(err)) recoverFromInvalidatedExtensionContext();
+      console.warn('[tab-harbor] failed to open suggestion in new window:', err);
+    });
+    return;
+  }
+  if (openInNewTab || button === 1) {
     await chrome.tabs.create({ url, active: false }).catch(err => {
       if (isExtensionContextInvalidated(err)) recoverFromInvalidatedExtensionContext();
       console.warn('[tab-harbor] failed to open suggestion in new tab:', err);
@@ -3848,7 +4568,7 @@ async function handleSearchSuggestionKeydown(e) {
       const selected = document.querySelector('.header-search-suggestion-row.is-selected');
       if (selected) {
         e.preventDefault();
-        await activateSearchSuggestion(selected, { openInNewTab: e.ctrlKey || e.metaKey });
+        await activateSearchSuggestion(selected, { openInNewTab: e.ctrlKey || e.metaKey, shiftKey: e.shiftKey });
         return;
       }
     }
@@ -4013,7 +4733,14 @@ function setupSearchSuggestions() {
     if (!row) return;
     e.preventDefault();
     e.stopPropagation();
-    await activateSearchSuggestion(row, { openInNewTab: e.ctrlKey || e.metaKey });
+    await activateSearchSuggestion(row, { openInNewTab: e.ctrlKey || e.metaKey, shiftKey: e.shiftKey, button: e.button });
+  });
+  panel.addEventListener('auxclick', async (e) => {
+    if (e.button !== 1) return;
+    const row = e.target.closest('.header-search-suggestion-row');
+    if (!row) return;
+    e.preventDefault();
+    await activateSearchSuggestion(row, { openInNewTab: true, button: 1 });
   });
 
   // Close when the user clicks anywhere outside the search form.
@@ -4051,18 +4778,15 @@ function setupSearchSuggestions() {
  */
 async function groupTabsWithStaleRetry(tabIds) {
   const initialIds = (tabIds || []).map(Number).filter(Number.isFinite);
-  try {
-    const groupId = await chrome.tabs.group({ tabIds: initialIds });
-    return { groupId, mergedTabIds: initialIds };
-  } catch (err) {
-    const liveIds = [];
-    for (const id of initialIds) {
-      try { await chrome.tabs.get(id); liveIds.push(id); } catch { /* stale */ }
-    }
-    if (liveIds.length === 0 || liveIds.length === initialIds.length) throw err;
-    const groupId = await chrome.tabs.group({ tabIds: liveIds });
-    return { groupId, mergedTabIds: liveIds };
-  }
+  const windowId = await getWindowIdForChromeGroupTabs(initialIds);
+  if (!Number.isInteger(windowId)) throw new Error('Could not resolve the Chrome tab-group window');
+  return performChromeGroupMutation('create', {
+    windowId,
+    tabIds: initialIds,
+    orderedTabIds: initialIds,
+    title: '',
+    color: 'grey',
+  });
 }
 
 /**
@@ -4075,16 +4799,13 @@ async function groupTabsWithStaleRetry(tabIds) {
  */
 async function groupTabsWithStaleRetryIntoGroup(groupId, tabIds) {
   const initialIds = (tabIds || []).map(Number).filter(Number.isFinite);
-  try {
-    return await chrome.tabs.group({ groupId, tabIds: initialIds });
-  } catch (err) {
-    const liveIds = [];
-    for (const id of initialIds) {
-      try { await chrome.tabs.get(id); liveIds.push(id); } catch { /* stale */ }
-    }
-    if (liveIds.length === 0 || liveIds.length === initialIds.length) throw err;
-    return chrome.tabs.group({ groupId, tabIds: liveIds });
-  }
+  const windowId = await getWindowIdForChromeGroupTabs(initialIds);
+  if (!Number.isInteger(windowId)) throw new Error('Could not resolve the Chrome tab-group window');
+  return performChromeGroupMutation('join', {
+    windowId,
+    targetGroupId: Number(groupId),
+    tabIds: initialIds,
+  });
 }
 
 /**
@@ -4097,16 +4818,12 @@ async function groupTabsWithStaleRetryIntoGroup(groupId, tabIds) {
 async function ungroupTabsWithStaleRetry(tabIds) {
   const initialIds = (tabIds || []).map(Number).filter(Number.isFinite);
   if (!initialIds.length) return;
-  try {
-    return await chrome.tabs.ungroup(initialIds);
-  } catch (err) {
-    const liveIds = [];
-    for (const id of initialIds) {
-      try { await chrome.tabs.get(id); liveIds.push(id); } catch { /* stale */ }
-    }
-    if (liveIds.length === 0 || liveIds.length === initialIds.length) throw err;
-    return chrome.tabs.ungroup(liveIds);
-  }
+  const windowId = await getWindowIdForChromeGroupTabs(initialIds);
+  if (!Number.isInteger(windowId)) throw new Error('Could not resolve the Chrome tab-group window');
+  return performChromeGroupMutation('ungroup', {
+    windowId,
+    tabIds: initialIds,
+  });
 }
 
 /**
@@ -4592,6 +5309,12 @@ function renderWorkspaceThemeTools() {
           </div>
           <div class="theme-menu-section">
             <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
+              <button class="theme-toggle-switch ${(typeof themePreferences !== 'undefined' && themePreferences.bookmarksShowFavicons === true) ? 'is-active' : ''}" type="button" data-action="toggle-bookmark-favicons" aria-pressed="${(typeof themePreferences !== 'undefined' && themePreferences.bookmarksShowFavicons === true) ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('bookmarksShowFaviconsLabel') : 'Show website icons for bookmarks'}"></button>
+              <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('bookmarksShowFaviconsLabel') : 'Show website icons for bookmarks'}</span>
+            </label>
+          </div>
+          <div class="theme-menu-section">
+            <label class="theme-menu-toggle-label theme-menu-toggle-button-row">
               <button class="theme-toggle-switch ${(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled !== false) ? 'is-active' : ''}" type="button" data-action="toggle-hitokoto" aria-pressed="${(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled !== false) ? 'true' : 'false'}" aria-label="${runtimeT ? runtimeT('hitokotoLabel') : 'Hitokoto'}"></button>
               <span class="theme-menu-label theme-menu-toggle-text">${runtimeT ? runtimeT('hitokotoLabel') : 'Hitokoto'}</span>
             </label>
@@ -4763,6 +5486,144 @@ function buildOpenTabsSectionActions() {
     <button class="section-icon-action section-icon-action-close" type="button" data-action="close-all-open-tabs" aria-label="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}" data-tooltip="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}">${ICONS.close}</button>`;
 }
 
+function renderChromeTabGroupConflicts() {
+  if (!chromeTabGroupsEnabled || !chromeTabGroupConflicts.length) return '';
+  const rows = chromeTabGroupConflicts.map(conflict => {
+    const candidates = Array.isArray(conflict.candidates) ? conflict.candidates : [];
+    const name = String(conflict.title || getAutomaticGroupDisplayTitle({ groupKey: conflict.groupKey }) || 'Group');
+    const tabCount = candidates.reduce((sum, candidate) => sum + (candidate.tabIds?.length || 0), 0);
+    const title = runtimeT
+      ? runtimeT('chromeGroupConflictTitle', { name })
+      : `Multiple Chrome groups named “${name}”`;
+    const meta = runtimeT
+      ? runtimeT('chromeGroupConflictMeta', { groups: candidates.length, tabs: tabCount })
+      : `${candidates.length} groups · ${tabCount} tabs`;
+    const safeKey = runtimeEscapeHtmlAttribute
+      ? runtimeEscapeHtmlAttribute(conflict.groupKey || '')
+      : String(conflict.groupKey || '').replace(/"/g, '&quot;');
+    const mergeLabel = runtimeT
+      ? runtimeT('chromeGroupConflictMergeLabel', { name })
+      : `Merge duplicate Chrome groups for ${name}`;
+    return `<article class="chrome-group-conflict" data-chrome-group-conflict="${safeKey}">
+      <div class="chrome-group-conflict-copy">
+        <span class="chrome-group-conflict-title">${runtimeEscapeHtml ? runtimeEscapeHtml(title) : title}</span>
+        <span class="chrome-group-conflict-meta">${runtimeEscapeHtml ? runtimeEscapeHtml(meta) : meta}</span>
+      </div>
+      <button class="chrome-group-conflict-action" type="button" data-action="open-chrome-group-merge" data-group-key="${safeKey}" aria-label="${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(mergeLabel) : mergeLabel.replace(/"/g, '&quot;')}">${runtimeT ? runtimeT('chromeGroupConflictMerge') : 'Merge…'}</button>
+    </article>`;
+  }).join('');
+  return rows;
+}
+
+function syncChromeTabGroupConflictStatus() {
+  const status = document.getElementById('chromeGroupConflictsStatus');
+  if (!status) return;
+  const signature = JSON.stringify(chromeTabGroupConflicts.map(conflict => ({
+    groupKey: String(conflict.groupKey || ''),
+    title: String(conflict.title || ''),
+    candidates: (conflict.candidates || []).map(candidate => ({
+      groupId: Number(candidate.id ?? candidate.groupId),
+      title: String(candidate.title || ''),
+      color: String(candidate.color || ''),
+      tabIds: (candidate.tabIds || []).map(Number),
+    })),
+  })));
+  if (status.dataset.conflictSignature === signature) return;
+  status.dataset.conflictSignature = signature;
+  status.innerHTML = renderChromeTabGroupConflicts();
+}
+
+function getChromeGroupConflict(groupKey) {
+  return chromeTabGroupConflicts.find(conflict => String(conflict.groupKey || '') === String(groupKey || '')) || null;
+}
+
+function closeChromeGroupMergeDialog({ restoreFocus = true } = {}) {
+  const dialog = document.getElementById('chromeGroupMergeDialog');
+  if (!restoreFocus && chromeGroupMergeDialogState) chromeGroupMergeDialogState.trigger = null;
+  if (dialog?.open) dialog.close();
+}
+
+function focusChromeGroupMergeResult(groupKey) {
+  const key = String(groupKey || '');
+  const groupButton = [...document.querySelectorAll('.group-nav-button[data-group-id]')]
+    .find(button => String(button.dataset.groupId || '') === key);
+  const fallback = groupButton || document.getElementById('headerSearchInput');
+  fallback?.focus?.({ preventScroll: true });
+}
+
+function openChromeGroupMergeDialog(groupKey, trigger = null) {
+  const conflict = getChromeGroupConflict(groupKey);
+  const candidates = Array.isArray(conflict?.candidates) ? conflict.candidates : [];
+  const dialog = document.getElementById('chromeGroupMergeDialog');
+  const options = document.getElementById('chromeGroupMergeOptions');
+  if (!conflict || candidates.length < 2 || !dialog || !options) return;
+
+  const name = String(conflict.title || getAutomaticGroupDisplayTitle({ groupKey }) || 'Group');
+  const titleEl = document.getElementById('chromeGroupMergeDialogTitle');
+  const hintEl = document.getElementById('chromeGroupMergeDialogHint');
+  const cancelEl = document.getElementById('chromeGroupMergeCancel');
+  const confirmEl = document.getElementById('chromeGroupMergeConfirm');
+  if (titleEl) titleEl.textContent = runtimeT ? runtimeT('chromeGroupMergeDialogTitle', { name }) : `Merge “${name}”`;
+  if (hintEl) hintEl.textContent = runtimeT
+    ? runtimeT('chromeGroupMergeDialogHint')
+    : 'Choose the group whose name, color and position should stay.';
+  if (cancelEl) cancelEl.textContent = runtimeT ? runtimeT('chromeGroupMergeCancel') : 'Cancel';
+  if (confirmEl) confirmEl.textContent = runtimeT ? runtimeT('chromeGroupMergeConfirm') : 'Merge groups';
+
+  const expectedGroups = [];
+  options.innerHTML = candidates.map((candidate, index) => {
+    const groupId = Number(candidate.id ?? candidate.groupId);
+    const expectedTabs = (candidate.tabIds || []).map(tabId => {
+      const tab = openTabs.find(item => Number(item.id) === Number(tabId));
+      return {
+        tabId: Number(tabId),
+        url: String(tab?.rawUrl ?? tab?.url ?? tab?.pendingUrl ?? ''),
+        label: String(tab?.title || tab?.url || `Tab ${tabId}`),
+      };
+    });
+    expectedGroups.push({
+      groupId,
+      title: String(candidate.title || ''),
+      color: String(candidate.color || 'grey'),
+      tabs: expectedTabs.map(tab => ({ tabId: tab.tabId, url: tab.url })),
+    });
+    const position = runtimeT
+      ? runtimeT('chromeGroupMergePosition', { position: index + 1 })
+      : `From left: ${index + 1}`;
+    const title = `${runtimeT ? runtimeT('chromeGroupMergeTargetLabel') : 'Keep this group'} · ${position} · ${candidate.color || 'grey'}`;
+    const members = expectedTabs.map(tab => tab.label).join(' · ');
+    const safeTitle = runtimeEscapeHtml ? runtimeEscapeHtml(title) : title;
+    const safeMembers = runtimeEscapeHtml ? runtimeEscapeHtml(members) : members;
+    return `<label class="chrome-group-merge-option${index === 0 ? ' is-selected' : ''}">
+      <input type="radio" name="chromeGroupMergeTarget" value="${groupId}"${index === 0 ? ' checked' : ''}>
+      <span class="chrome-group-merge-option-copy">
+        <span class="chrome-group-merge-option-title">${safeTitle}</span>
+        <span class="chrome-group-merge-option-tabs">${safeMembers}</span>
+      </span>
+    </label>`;
+  }).join('');
+  chromeGroupMergeDialogState = { groupKey: String(groupKey), conflict, expectedGroups, trigger };
+  if (!dialog.open) dialog.showModal();
+  requestAnimationFrame(() => options.querySelector('input:checked')?.focus({ preventScroll: true }));
+}
+
+function setupChromeGroupMergeDialog() {
+  const dialog = document.getElementById('chromeGroupMergeDialog');
+  if (!dialog || dialog.dataset.lifecycleAttached === 'true') return;
+  dialog.addEventListener('close', () => {
+    const trigger = chromeGroupMergeDialogState?.trigger;
+    chromeGroupMergeDialogState = null;
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  });
+  dialog.addEventListener('change', (event) => {
+    if (!event.target?.matches?.('input[name="chromeGroupMergeTarget"]')) return;
+    dialog.querySelectorAll('.chrome-group-merge-option').forEach(option => {
+      option.classList.toggle('is-selected', option.contains(event.target));
+    });
+  });
+  dialog.dataset.lifecycleAttached = 'true';
+}
+
 function renderOpenTabsSummary(realTabs = getRealTabs()) {
   const openTabsSection      = document.getElementById('openTabsSection');
   const openTabsSectionCount = document.getElementById('openTabsSectionCount');
@@ -4779,16 +5640,17 @@ function renderOpenTabsSummary(realTabs = getRealTabs()) {
     syncWorkspaceTopNavMarkup(renderGroupNavArea(domainGroups), true);
     if (openTabsMissionsEl) {
       openTabsMissionsEl.querySelector('#tabSessionPicker')?.remove();
-      if (tabSessionPickerState.open) {
-        openTabsMissionsEl.insertAdjacentHTML('afterbegin', renderTabSessionPicker());
-      }
+      const leadingMarkup = tabSessionPickerState.open ? renderTabSessionPicker() : '';
+      if (leadingMarkup) openTabsMissionsEl.insertAdjacentHTML('afterbegin', leadingMarkup);
     }
     openTabsSection.style.display = 'block';
+    syncChromeTabGroupConflictStatus();
     return;
   }
 
   syncWorkspaceTopNavMarkup(renderGroupNavArea([]), true);
   openTabsSection.style.display = 'block';
+  syncChromeTabGroupConflictStatus();
   if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderMissionsEmptyState();
   if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
 }
@@ -4852,89 +5714,62 @@ function patchOpenTabsDomFromGroups(realTabs = getRealTabs(), changedGroupKeys =
 }
 
 async function buildDomainGroups(realTabs = getRealTabs()) {
-  // Landing pages (Gmail front page, Twitter home, etc.) get their own special group
-  // so they can be closed together without affecting content tabs on the same domain.
-  // Gmail inbox/sent/search views count as content tabs, not landing pages.
-  const LANDING_PAGE_PATTERNS = [
-    { hostname: 'mail.google.com', test: (p, h) =>
-        !h.includes('#inbox') && !h.includes('#sent') && !h.includes('#search/') },
-    { hostname: 'x.com',               pathExact: ['/home'] },
-    { hostname: 'www.linkedin.com',    pathExact: ['/'] },
-    { hostname: 'github.com',          pathExact: ['/'] },
-    { hostname: 'www.youtube.com',     pathExact: ['/'] },
-    ...(typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' ? LOCAL_LANDING_PAGE_PATTERNS : []),
-  ];
-
-  function isLandingPage(url) {
-    try {
-      const parsed = new URL(url);
-      return LANDING_PAGE_PATTERNS.some(p => {
-        const hostnameMatch = p.hostname
-          ? parsed.hostname === p.hostname
-          : p.hostnameEndsWith
-            ? parsed.hostname.endsWith(p.hostnameEndsWith)
-            : false;
-        if (!hostnameMatch) return false;
-        if (p.test)       return p.test(parsed.pathname, url);
-        if (p.pathPrefix) return parsed.pathname.startsWith(p.pathPrefix);
-        if (p.pathExact)  return p.pathExact.includes(parsed.pathname);
-        return parsed.pathname === '/';
-      });
-    } catch { return false; }
-  }
-
   domainGroups = [];
-  // User-created Chrome tab groups render as first-class cards regardless of
-  // the sync toggle (the toggle only controls pushing domain mirror groups).
-  // Their tabs never fall into domain/landing grouping.
-  let userChromeGroups = [];
-  if (typeof queryUserChromeGroups === 'function') {
-    try {
-      const windowId = await getDashboardWindowIdForOpenTabs();
-      if (windowId != null) {
-        userChromeGroups = await queryUserChromeGroups(windowId);
-      } else {
-        console.warn('[tab-harbor] buildDomainGroups: no dashboard window id — skipping Chrome group cards');
-      }
-    } catch (err) {
-      console.warn('[tab-harbor] buildDomainGroups: Chrome group detection failed:', err);
+  chromeTabGroupSnapshotAuthoritative = false;
+  const dashboardWindowId = await getDashboardWindowIdForOpenTabs();
+  let liveStateResponse = null;
+  let nativeChromeGroups = [];
+  if (dashboardWindowId != null) {
+    liveStateResponse = await loadChromeTabGroupLiveState(Number(dashboardWindowId));
+    if (liveStateResponse?.ok) {
+      nativeChromeGroups = chromeTabGroupLiveState.nativeGroups;
+      chromeTabGroupSnapshotAuthoritative = true;
     }
   }
-  // Distinguish "API failure" from "genuinely no groups": surface a throttled
-  // toast ONLY when the whole query failed (no groups came back at all). A
-  // single group's transient query failure must not misreport the entire
-  // result as unavailable — the snapshot fallback below still protects the
-  // affected tabs.
-  if (typeof getChromeGroupsLastError === 'function'
-      && getChromeGroupsLastError()
-      && (userChromeGroups || []).length === 0) {
+  // A read failure never becomes an empty authoritative snapshot. The legacy
+  // page-side query is read-only and keeps existing native cards visible while
+  // the background coordinator fails the sync round closed.
+  if (!liveStateResponse?.ok && typeof queryUserChromeGroups === 'function') {
+    try {
+      nativeChromeGroups = dashboardWindowId == null
+        ? []
+        : await queryUserChromeGroups(Number(dashboardWindowId));
+    } catch (error) {
+      console.warn('[tab-harbor] buildDomainGroups: Chrome group fallback failed:', error);
+    }
+  }
+  if (!liveStateResponse?.ok) {
     const lastToastAt = window.__chromeGroupsErrorToastAt || 0;
     if (Date.now() - lastToastAt > 15000) {
       window.__chromeGroupsErrorToastAt = Date.now();
       showToast(runtimeT ? runtimeT('toastChromeGroupsUnavailable') : 'Could not read Chrome tab groups');
     }
   }
-  const chromeOwnedTabIds = new Set((userChromeGroups || []).flatMap(g => g.tabIds || []));
-  // When queryUserChromeGroups failed or partially failed (C7), tabs that the
-  // openTabs snapshot already knows live in an UNMANAGED native Chrome group
-  // must never fall into domain or manual cards — otherwise syncChromeTabGroups
-  // could move them out of the user's real group into a dashboard mirror.
-  // Managed mirror groups are intentionally NOT treated as user-owned: their
-  // tabs belong to domain cards. The fallback is gated on the query failing:
-  // on a fully successful query the live tab list is authoritative, and a
-  // snapshot that lags behind a tab having LEFT a user group must not hide it
-  // from every card until the next fetch.
-  const chromeGroupsQueryFailed = typeof getChromeGroupsLastError === 'function' && Boolean(getChromeGroupsLastError());
-  if (chromeGroupsQueryFailed) {
-    const managedChromeGroupIds = typeof getManagedChromeGroupIds === 'function'
-      ? getManagedChromeGroupIds()
-      : new Set();
-    for (const tab of realTabs) {
-      if (Number.isInteger(tab?.groupId) && tab.groupId >= 0 && !managedChromeGroupIds.has(tab.groupId)) {
-        chromeOwnedTabIds.add(Number(tab.id));
-      }
+
+  const nativeAnalysis = getNativeChromeGroupAnalysis(
+    nativeChromeGroups,
+    realTabs,
+    dashboardWindowId,
+  );
+  chromeTabGroupPreserveKeys = [...nativeAnalysis.unsafeMappedGroupKeys];
+  const automaticNativeGroupIds = chromeTabGroupsEnabled
+    ? new Set([
+        ...nativeAnalysis.mappedGroupIds,
+        ...nativeAnalysis.reconcilableCreatedGroupIds,
+        ...nativeAnalysis.uniqueCandidateGroupIds,
+      ])
+    : new Set();
+  const userChromeGroups = (nativeChromeGroups || []).filter(group =>
+    !automaticNativeGroupIds.has(Number(group.id ?? group.groupId))
+  );
+  const chromeOwnedTabIds = new Set((userChromeGroups || []).flatMap(group => group.tabIds || []).map(Number));
+  const userChromeGroupIds = new Set(userChromeGroups.map(group => Number(group.id ?? group.groupId)));
+  for (const tab of realTabs) {
+    if (Number.isInteger(tab?.groupId) && userChromeGroupIds.has(Number(tab.groupId))) {
+      chromeOwnedTabIds.add(Number(tab.id));
     }
   }
+  chromeTabGroupConflicts = chromeTabGroupsEnabled ? nativeAnalysis.conflicts : [];
   const manualGroupMap = Object.fromEntries(
     sessionGroupsState.groups.map(group => [
       group.id,
@@ -4948,77 +5783,70 @@ async function buildDomainGroups(realTabs = getRealTabs()) {
       },
     ])
   );
-  const groupMap    = {};
-  const landingTabs = [];
-  const customGroups = typeof LOCAL_CUSTOM_GROUPS !== 'undefined' ? LOCAL_CUSTOM_GROUPS : [];
-
-  function matchCustomGroup(url) {
-    try {
-      const parsed = new URL(url);
-      return customGroups.find(r => {
-        const hostMatch = r.hostname
-          ? parsed.hostname === r.hostname
-          : r.hostnameEndsWith
-            ? parsed.hostname.endsWith(r.hostnameEndsWith)
-            : false;
-        if (!hostMatch) return false;
-        if (r.pathPrefix) return parsed.pathname.startsWith(r.pathPrefix);
-        return true;
-      }) || null;
-    } catch { return null; }
-  }
+  const groupMap = {};
+  const syncGroupMap = {};
 
   for (const tab of realTabs) {
+    const nativeGroupId = Number(tab?.groupId);
+    const belongsToMappedNativeGroup = Number.isInteger(nativeGroupId)
+      && nativeAnalysis.mappedGroupIds.has(nativeGroupId);
+    const belongsToReconcilableCreatedGroup = Number.isInteger(nativeGroupId)
+      && nativeAnalysis.reconcilableCreatedGroupIds.has(nativeGroupId);
+    const rawMappedGroupKey = Number.isInteger(nativeGroupId)
+      ? nativeAnalysis.rawMappedKeysByGroupId.get(nativeGroupId) || ''
+      : '';
+    const belongsToCandidateNativeGroup = Number.isInteger(nativeGroupId)
+      && nativeAnalysis.allCandidateGroupIds.has(nativeGroupId);
+    const belongsToAutomaticNativeGroup = automaticNativeGroupIds.has(nativeGroupId);
+    const assignedGroupId = sessionGroupsState.assignments[String(tab.id)];
+    const definition = getAutomaticTabGroupDefinition(tab);
+
+    // The coordinator needs the complete logical membership to decide whether
+    // one native group is safe to adopt or several are ambiguous. Candidate
+    // tabs therefore remain in this sync-only snapshot even when ambiguous
+    // groups continue rendering as native cards until confirmation.
+    const isUngrouped = !Number.isInteger(nativeGroupId) || nativeGroupId < 0;
+    const eligibleForAutomaticSync = chromeTabGroupsEnabled
+      && !tab?.pinned
+      && definition
+      && (isUngrouped || belongsToMappedNativeGroup || belongsToReconcilableCreatedGroup
+        || belongsToCandidateNativeGroup
+        || rawMappedGroupKey === definition.groupKey)
+      && (!assignedGroupId || belongsToMappedNativeGroup || belongsToCandidateNativeGroup
+        || rawMappedGroupKey === definition.groupKey);
+    if (eligibleForAutomaticSync) {
+      const key = definition.groupKey;
+      if (!syncGroupMap[key]) syncGroupMap[key] = { domain: key, label: definition.label || '', tabs: [] };
+      syncGroupMap[key].tabs.push(tab);
+    }
+
     // A tab inside a user-created Chrome group belongs to that group's card.
     if (chromeOwnedTabIds.has(tab.id)) continue;
     try {
-      const assignedGroupId = sessionGroupsState.assignments[String(tab.id)];
-      if (assignedGroupId && manualGroupMap[assignedGroupId]) {
+      if (assignedGroupId && manualGroupMap[assignedGroupId] && !belongsToAutomaticNativeGroup) {
         manualGroupMap[assignedGroupId].tabs.push({
           ...tab,
           manualGroupId: assignedGroupId,
         });
         continue;
       }
-
-      if (isLandingPage(tab.url)) {
-        landingTabs.push(tab);
-        continue;
-      }
-
-      const customRule = matchCustomGroup(tab.url);
-      if (customRule) {
-        const key = customRule.groupKey;
-        if (!groupMap[key]) groupMap[key] = { domain: key, label: customRule.groupLabel, tabs: [] };
-        groupMap[key].tabs.push(tab);
-        continue;
-      }
-
-      let hostname;
-      if (tab.url && tab.url.startsWith('file://')) {
-        hostname = 'local-files';
-      } else {
-        const rawHostname = new URL(tab.url).hostname;
-        hostname = runtimeGetPrimaryDomain ? runtimeGetPrimaryDomain(rawHostname) : rawHostname;
-      }
-      if (!hostname) continue;
-
-      if (!groupMap[hostname]) groupMap[hostname] = { domain: hostname, tabs: [] };
-      groupMap[hostname].tabs.push(tab);
+      if (!definition) continue;
+      const key = definition.groupKey;
+      if (!groupMap[key]) groupMap[key] = { domain: key, label: definition.label || '', tabs: [] };
+      groupMap[key].tabs.push(tab);
     } catch {
       // Skip malformed URLs
     }
   }
 
-  if (landingTabs.length > 0) {
-    groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
-  }
+  chromeTabGroupSyncGroups = Object.values(syncGroupMap);
 
-  const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
-  const landingSuffixes = LANDING_PAGE_PATTERNS.map(p => p.hostnameEndsWith).filter(Boolean);
+  const landingPatterns = getAutomaticLandingPagePatterns();
+  const landingHostnames = new Set(landingPatterns.map(pattern => pattern.hostname).filter(Boolean));
+  const landingSuffixes = landingPatterns.map(pattern => pattern.hostnameEndsWith).filter(Boolean);
   function isLandingDomain(domain) {
     if (landingHostnames.has(domain)) return true;
-    return landingSuffixes.some(s => domain.endsWith(s));
+    return landingSuffixes.some(suffix => matchesAutomaticHostnameSuffix(domain, suffix));
   }
 
   const manualGroups = Object.values(manualGroupMap)
@@ -5050,19 +5878,25 @@ async function buildDomainGroups(realTabs = getRealTabs()) {
   // a minimal placeholder so the card still renders and the next refresh
   // fills the rows in.
   const chromeCards = (userChromeGroups || [])
-    .map(group => ({
-      domain: `${CHROME_GROUP_PREFIX}${group.id}`,
-      label: group.title || 'Group',
-      tabs: (group.tabIds || []).map(id => {
-        const live = openTabs.find(t => Number(t.id) === Number(id));
-        return live || { id: Number(id), url: '', title: '', windowId: Number(group.windowId), groupId: Number(group.id) };
-      }),
-      isChromeGroup: true,
-      chromeGroupId: group.id,
-      chromeGroupColor: group.color,
-      chromeGroupCollapsed: group.collapsed,
-      chromePosition: group.minIndex,
-    }))
+    .map(group => {
+      const groupId = Number(group.id ?? group.groupId);
+      const liveIds = Array.isArray(group.tabIds) && group.tabIds.length > 0
+        ? group.tabIds
+        : realTabs.filter(tab => Number(tab.groupId) === groupId).map(tab => tab.id);
+      return {
+        domain: `${CHROME_GROUP_PREFIX}${groupId}`,
+        label: group.title || 'Group',
+        tabs: liveIds.map(id => {
+          const live = openTabs.find(t => Number(t.id) === Number(id));
+          return live || { id: Number(id), url: '', title: '', windowId: Number(group.windowId), groupId };
+        }),
+        isChromeGroup: true,
+        chromeGroupId: groupId,
+        chromeGroupColor: group.color,
+        chromeGroupCollapsed: group.collapsed,
+        chromePosition: group.minIndex,
+      };
+    })
     .filter(group => group.tabs.length > 0);
 
   if (chromeCards.length > 0) {
@@ -5071,6 +5905,27 @@ async function buildDomainGroups(realTabs = getRealTabs()) {
     domainGroups = applyGroupOrder([...manualGroups, ...automaticGroups], groupOrderState);
   }
   await loadGroupTabOrder(domainGroups);
+  if (dashboardWindowId != null && automaticGroupingRuleOverridesPublished &&
+      typeof runtimeBuildAutomaticChromeSyncSnapshot === 'function') {
+    const automaticSnapshot = runtimeBuildAutomaticChromeSyncSnapshot({
+      windowId: Number(dashboardWindowId),
+      tabs: realTabs,
+      nativeGroups: nativeChromeGroups,
+      sessionGroups: sessionGroupsState,
+      labelOverrides: groupLabelOverrides,
+      groupTabOrder: groupTabOrderState,
+      landingPagePatterns: typeof LOCAL_LANDING_PAGE_PATTERNS !== 'undefined' && Array.isArray(LOCAL_LANDING_PAGE_PATTERNS)
+        ? LOCAL_LANDING_PAGE_PATTERNS
+        : [],
+      customGroups: typeof LOCAL_CUSTOM_GROUPS !== 'undefined' && Array.isArray(LOCAL_CUSTOM_GROUPS)
+        ? LOCAL_CUSTOM_GROUPS
+        : [],
+      homepagesLabel: runtimeT ? runtimeT('homepagesLabel') : 'Homepages',
+    });
+    chromeTabGroupSyncGroups = chromeTabGroupsEnabled ? automaticSnapshot.groups : [];
+    chromeTabGroupPreserveKeys = chromeTabGroupsEnabled ? automaticSnapshot.preserveGroupKeys : [];
+    chromeTabGroupConflicts = chromeTabGroupsEnabled ? automaticSnapshot.analysis.conflicts : [];
+  }
   return domainGroups;
 }
 
@@ -5088,9 +5943,11 @@ function renderOpenTabsArea(realTabs = getRealTabs()) {
     if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = `${renderTabSessionPicker()}${domainGroups.map(g => renderDomainCard(g)).join('')}`;
     syncWorkspaceTopNavMarkup(renderGroupNavArea(domainGroups), true);
     openTabsSection.style.display = 'block';
+    syncChromeTabGroupConflictStatus();
   } else if (openTabsSection) {
     syncWorkspaceTopNavMarkup(renderGroupNavArea([]), true);
     openTabsSection.style.display = 'block';
+    syncChromeTabGroupConflictStatus();
     if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderMissionsEmptyState();
     if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
   }
@@ -5160,17 +6017,9 @@ async function renderStaticDashboard() {
   if (dateEl)     dateEl.textContent     = getDateDisplay();
 
   // --- Hitokoto (一言) ---
-  const hitokotoEnabled = typeof themePreferences !== 'undefined' ? themePreferences.hitokotoEnabled : true;
-  const hitokotoEl     = document.getElementById('hitokoto');
-  const hitokotoTextEl = document.getElementById('hitokotoText');
-  const hitokotoFromEl = document.getElementById('hitokotoFrom');
-  if (hitokotoEnabled && hitokotoEl && hitokotoTextEl && hitokotoFromEl) {
-    const hasCachedHitokoto = renderCachedHitokoto(hitokotoTextEl, hitokotoFromEl);
-    hitokotoEl.style.display = hasCachedHitokoto ? '' : 'none';
-    void warmHitokotoCacheInBackground();
-  } else if (hitokotoEl) {
-    hitokotoEl.style.display = 'none';
-  }
+  // The current page instance owns one immutable entry. Re-renders only sync
+  // visibility; they never re-select the cache or replace the displayed text.
+  syncHitokotoForCurrentPage();
 
   renderThemeMenu();
   await renderQuickShortcuts();
@@ -5198,10 +6047,13 @@ async function renderStaticDashboard() {
   }
 }
 
-async function renderDashboard() {
+async function renderDashboard({ syncChromeGroups = true } = {}) {
   await renderStaticDashboard();
+  if (!syncChromeGroups) return;
   if (chromeTabGroupsEnabled) {
     await syncChromeTabGroupsWithoutImportEcho();
+  } else if (hasCreatedChromeTabGroupMappings() && !chromeTabGroupCleanupRetryTimer) {
+    await requestChromeTabGroupCleanup();
   }
 }
 
@@ -5230,16 +6082,6 @@ function shouldSkipStartupTabChange(message = {}) {
   if (message.source !== 'tabs.onCreated' && message.source !== 'tabs.onUpdated') return false;
   if (currentDashboardTabId == null || message.triggerTabId == null) return false;
   return Number(message.triggerTabId) === Number(currentDashboardTabId);
-}
-
-async function collapseChromeGroupsForCurrentTabHarborTab() {
-  if (typeof collapseChromeTabGroupsInWindow !== 'function') return;
-
-  const currentTab = await resolveCurrentDashboardTab();
-
-  const isTabHarborTab = isTabHarborNewTabUrl(currentTab?.url);
-  if (!currentTab?.windowId || !isTabHarborTab) return;
-  await collapseChromeTabGroupsInWindow(currentTab.windowId);
 }
 
 function updateBackToTopVisibility() {
@@ -5288,6 +6130,16 @@ document.addEventListener('click', async (e) => {
   if (!actionEl) return;
 
   const action = actionEl.dataset.action;
+
+  if (action === 'open-chrome-group-merge') {
+    openChromeGroupMergeDialog(actionEl.dataset.groupKey || '', actionEl);
+    return;
+  }
+
+  if (action === 'close-chrome-group-merge') {
+    closeChromeGroupMergeDialog();
+    return;
+  }
 
   if (action === 'toggle-theme-menu') {
     setThemeMenuOpen(!themeMenuOpen);
@@ -5418,20 +6270,21 @@ document.addEventListener('click', async (e) => {
   if (action === 'toggle-hitokoto') {
     const nextEnabled = !(typeof themePreferences !== 'undefined' && themePreferences.hitokotoEnabled);
     await saveThemePreferences({ hitokotoEnabled: nextEnabled });
-    const hitokotoEl = document.getElementById('hitokoto');
-    const hitokotoTextEl = document.getElementById('hitokotoText');
-    const hitokotoFromEl = document.getElementById('hitokotoFrom');
-    if (hitokotoEl) hitokotoEl.style.display = nextEnabled ? '' : 'none';
-    if (nextEnabled && hitokotoTextEl && hitokotoFromEl) {
-      const hasCachedHitokoto = renderCachedHitokoto(hitokotoTextEl, hitokotoFromEl);
-      if (hitokotoEl) hitokotoEl.style.display = hasCachedHitokoto ? '' : 'none';
-      void refreshHitokotoInBackground(hitokotoTextEl, hitokotoFromEl);
-    } else if (!nextEnabled && hitokotoTextEl && hitokotoFromEl) {
-      hitokotoTextEl.textContent = '';
-      hitokotoFromEl.textContent = '';
-    }
+    syncHitokotoForCurrentPage();
     // Sync toggle switch visual state (renderThemeMenu does not know about this switch)
     const toggleSwitch = document.querySelector('[data-action="toggle-hitokoto"]');
+    if (toggleSwitch) {
+      toggleSwitch.classList.toggle('is-active', nextEnabled);
+      toggleSwitch.setAttribute('aria-pressed', String(nextEnabled));
+    }
+    return;
+  }
+
+  if (action === 'toggle-bookmark-favicons') {
+    const nextEnabled = !(typeof themePreferences !== 'undefined' && themePreferences.bookmarksShowFavicons === true);
+    await saveThemePreferences({ bookmarksShowFavicons: nextEnabled });
+    bookmarksShelfController?.setShowFavicons?.(nextEnabled);
+    const toggleSwitch = document.querySelector('[data-action="toggle-bookmark-favicons"]');
     if (toggleSwitch) {
       toggleSwitch.classList.toggle('is-active', nextEnabled);
       toggleSwitch.setAttribute('aria-pressed', String(nextEnabled));
@@ -7070,6 +7923,47 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'chromeGroupMergeForm') {
+    e.preventDefault();
+    const dialogState = chromeGroupMergeDialogState;
+    const targetInput = e.target.querySelector('input[name="chromeGroupMergeTarget"]:checked');
+    const targetGroupId = Number(targetInput?.value);
+    const candidates = Array.isArray(dialogState?.conflict?.candidates)
+      ? dialogState.conflict.candidates
+      : [];
+    const sourceGroupIds = candidates
+      .map(candidate => Number(candidate.id ?? candidate.groupId))
+      .filter(groupId => Number.isInteger(groupId) && groupId !== targetGroupId);
+    const windowId = await getDashboardWindowIdForOpenTabs();
+    if (!dialogState || !Number.isInteger(targetGroupId) || sourceGroupIds.length === 0 || windowId == null) return;
+    const expectedGroups = Array.isArray(dialogState.expectedGroups)
+      ? dialogState.expectedGroups
+      : [];
+
+    const confirmButton = document.getElementById('chromeGroupMergeConfirm');
+    if (confirmButton) confirmButton.disabled = true;
+    const response = await sendChromeTabGroupRequest('merge-chrome-tab-groups', {
+      windowId: Number(windowId),
+      groupKey: dialogState.groupKey,
+      targetGroupId,
+      sourceGroupIds,
+      expectedGroups,
+    });
+    if (confirmButton) confirmButton.disabled = false;
+    if (!response?.ok) {
+      showToast(runtimeT ? runtimeT('chromeGroupMergeFailed') : 'Could not merge Chrome groups');
+      return;
+    }
+    applyChromeTabGroupResponseState(response);
+    const mergedGroupKey = dialogState.groupKey;
+    closeChromeGroupMergeDialog({ restoreFocus: false });
+    await fetchOpenTabs();
+    await renderDashboard();
+    focusChromeGroupMergeResult(mergedGroupKey);
+    showToast(runtimeT ? runtimeT('chromeGroupMergeSuccess') : 'Chrome groups merged');
+    return;
+  }
+
   if (e.target.matches('.mission-rename-form')) {
     e.preventDefault();
     await submitGroupRenameEditor();
@@ -7223,44 +8117,58 @@ async function initializeDashboardRuntime() {
     window.__suppressAutoRefreshUntil || 0,
     Date.now() + 2000
   );
-  await loadThemePreferences();
-  syncSearchPlaceholder();
-  sleepControlEnabled = (typeof themePreferences !== 'undefined' && themePreferences.sleepControlEnabled === true);
+  // Attach before the first asynchronous render. Notifications received while
+  // the initial snapshot is loading are retained as one trailing refresh
+  // instead of being lost until the user causes another tab event.
+  setupTabChangeListener();
+  tabDrivenDashboardRefreshRunning = true;
+  try {
+    await loadThemePreferences();
+    automaticGroupingRuleOverridesPublished = await publishAutomaticGroupingRuleOverrides();
+    syncSearchPlaceholder();
+    setupBookmarksShelf();
+    setupChromeGroupMergeDialog();
+    sleepControlEnabled = (typeof themePreferences !== 'undefined' && themePreferences.sleepControlEnabled === true);
 
-  const navHost = getWorkspaceTopNavHost();
-  if (navHost && !navHost.dataset.wheelHijackAttached) {
-    navHost.dataset.wheelHijackAttached = '1';
-    // The nav scrollbars are hidden; let the vertical wheel scroll the
-    // group lists horizontally (delegated so it survives re-renders) — but
-    // only when the list can actually scroll, so a wheel over a short nav
-    // passes through instead of trapping the page.
-    navHost.addEventListener('wheel', (e) => {
-      const list = e.target.closest('.group-nav-list');
-      if (!list) return;
-      if (list.scrollWidth <= list.clientWidth) return;
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        list.scrollLeft += e.deltaY;
+    const navHost = getWorkspaceTopNavHost();
+    if (navHost && !navHost.dataset.wheelHijackAttached) {
+      navHost.dataset.wheelHijackAttached = '1';
+      // The nav scrollbars are hidden; let the vertical wheel scroll the
+      // group lists horizontally (delegated so it survives re-renders) — but
+      // only when the list can actually scroll, so a wheel over a short nav
+      // passes through instead of trapping the page.
+      navHost.addEventListener('wheel', (e) => {
+        const list = e.target.closest('.group-nav-list');
+        if (!list) return;
+        if (list.scrollWidth <= list.clientWidth) return;
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          list.scrollLeft += e.deltaY;
+        }
+      }, { passive: false });
+    }
+    if (typeof loadChromeTabGroupsSetting === 'function') {
+      chromeTabGroupsEnabled = await loadChromeTabGroupsSetting();
+    }
+    await loadImportedChromeGroupMeta();
+    if (chromeTabGroupsEnabled) {
+      await fetchOpenTabs();
+      const realTabs = getRealTabs();
+      await loadSessionGroups(getOpenTabIdsForSessionPruning());
+      if (shouldImportChromeGroupsIntoSessionState()) {
+        const importedCount = await importChromeNativeGroupsIntoSessionGroups();
+        if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
       }
-    }, { passive: false });
-  }
-  if (typeof loadChromeTabGroupsSetting === 'function') {
-    chromeTabGroupsEnabled = await loadChromeTabGroupsSetting();
-  }
-  await loadImportedChromeGroupMeta();
-  if (chromeTabGroupsEnabled) {
-    await fetchOpenTabs();
-    const realTabs = getRealTabs();
-    await loadSessionGroups(getOpenTabIdsForSessionPruning());
-    if (shouldImportChromeGroupsIntoSessionState()) {
-      const importedCount = await importChromeNativeGroupsIntoSessionGroups();
-      if (typeof setImportMode === 'function') setImportMode(importedCount > 0);
+    }
+    ensureChromeTabGroupsSubscription();
+    disableChromeTabGroupsImportModeForLocalEdits();
+    await renderDashboard();
+  } finally {
+    tabDrivenDashboardRefreshRunning = false;
+    if (tabDrivenDashboardRefreshDirty) {
+      armTabDrivenDashboardRefresh(tabDrivenDashboardRefreshDelayMs);
     }
   }
-  ensureChromeTabGroupsSubscription();
-  disableChromeTabGroupsImportModeForLocalEdits();
-  await renderDashboard();
-  await collapseChromeGroupsForCurrentTabHarborTab();
   updateBackToTopVisibility();
 
   // Search-field auto-focus + inline suggestions.
@@ -7274,9 +8182,6 @@ async function initializeDashboardRuntime() {
   } else {
     window.addEventListener('load', scheduleSearchFocusVerification, { once: true });
   }
-
-  // Listen for tab change notifications from background script
-  setupTabChangeListener();
 }
 
 /**
@@ -7307,6 +8212,8 @@ function recoverFromInvalidatedExtensionContext() {
  * and refreshes the dashboard to show updated tab list.
  */
 function setupTabChangeListener() {
+  if (tabChangeListenerAttached) return;
+  tabChangeListenerAttached = true;
   const DEBUG = false;
   if (DEBUG) console.log('[tab-harbor] Setting up tab change listener');
 
@@ -7318,33 +8225,28 @@ function setupTabChangeListener() {
         return;
       }
 
-      // Skip refresh if we just performed a tab action ourselves
-      // This prevents animation spam when closing tabs from the dashboard
-      if (Date.now() < (window.__suppressAutoRefreshUntil || 0)) {
+      if (currentDashboardWindowId != null && message.windowId != null &&
+          Number(message.windowId) !== Number(currentDashboardWindowId)) {
+        return;
+      }
+
+      // Keep, rather than discard, notifications received during startup or
+      // a local action's quiet window. One read-only refresh runs after the
+      // suppression period and absorbs every event in the burst.
+      const suppressionRemaining = Math.max(
+        0,
+        (window.__suppressAutoRefreshUntil || 0) - Date.now(),
+      );
+      if (suppressionRemaining > 0) {
+        scheduleTabDrivenDashboardRefresh(suppressionRemaining + 200);
         return;
       }
 
       if (DEBUG) console.log('[tab-harbor] Tab changed, scheduling refresh...');
 
-      // Debounce rapid changes (e.g., closing multiple tabs)
-      if (window.__tabRefreshTimeout) {
-        clearTimeout(window.__tabRefreshTimeout);
-      }
-
-      window.__tabRefreshTimeout = setTimeout(async () => {
-        try {
-          if (DEBUG) console.log('[tab-harbor] Refreshing dashboard...');
-          await renderDashboard();
-          updateBackToTopVisibility();
-          if (typeof window.__tabHarborSuggestionsRefresh === 'function') {
-            window.__tabHarborSuggestionsRefresh();
-          }
-          if (DEBUG) console.log('[tab-harbor] Dashboard refreshed successfully');
-        } catch (err) {
-          console.warn('[tab-harbor] Failed to refresh dashboard:', err);
-          if (isExtensionContextInvalidated(err)) recoverFromInvalidatedExtensionContext();
-        }
-      }, 300); // Wait 300ms after last tab change
+      // Background and direct Chrome listeners share one timer. A burst of
+      // duplicate notifications therefore becomes one read-only refresh.
+      scheduleTabDrivenDashboardRefresh(300);
     }
   });
 }
@@ -7359,12 +8261,10 @@ function mountDashboardRuntime() {
       if (isExtensionContextInvalidated(event?.reason)) recoverFromInvalidatedExtensionContext();
     });
     window.addEventListener('focus', () => {
-      void collapseChromeGroupsForCurrentTabHarborTab();
       focusSearchFieldOnForeground();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        void collapseChromeGroupsForCurrentTabHarborTab();
         focusSearchFieldOnForeground();
       }
     });

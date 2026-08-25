@@ -507,6 +507,495 @@ body.theme-tone-dark::before {
     width: 100%;
 }
 
+/* ---- Chrome bookmarks: a quiet, read-only continuation of quick links ---- */
+.bookmarks-shelf-host {
+    width: 100%;
+    margin-top: 14px;
+}
+
+.bookmarks-shelf {
+    width: 100%;
+    padding-top: 10px;
+    border-top: 1px solid
+        color-mix(in srgb, var(--workspace-accent-border) 18%, transparent);
+    color: var(--ink);
+}
+
+.bookmarks-shelf-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    margin-bottom: 6px;
+}
+
+.bookmarks-shelf-search {
+    position: relative;
+    flex: 0 1 220px;
+    min-width: 120px;
+}
+
+.bookmarks-shelf-search input {
+    width: 100%;
+    min-height: 34px;
+    border: none;
+    border-bottom: 1px solid
+        color-mix(in srgb, var(--workspace-accent-border) 28%, transparent);
+    border-radius: 0;
+    padding: 5px 2px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--ui-font-12);
+    outline: none;
+}
+
+.bookmarks-shelf-search input::placeholder {
+    color: var(--muted);
+}
+
+.bookmarks-shelf-search input:focus-visible {
+    border-color: var(--workspace-accent);
+    box-shadow: 0 2px 0 color-mix(in srgb, var(--workspace-accent) 22%, transparent);
+}
+
+.bookmarks-shelf-action {
+    min-height: 34px;
+    border: none;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: var(--workspace-chip-text);
+    color: var(--workspace-accent-contrast);
+    font: inherit;
+    font-size: var(--ui-font-11);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.bookmarks-shelf-action.is-secondary {
+    margin-left: auto;
+    padding-inline: 8px;
+    background: transparent;
+    color: var(--muted);
+}
+
+.bookmarks-shelf-action:hover,
+.bookmarks-shelf-action:focus-visible {
+    color: var(--theme-accent-strong);
+}
+
+.bookmarks-shelf-action:not(.is-secondary):hover,
+.bookmarks-shelf-action:not(.is-secondary):focus-visible {
+    background: var(--banner-action-bg-hover);
+    color: var(--workspace-accent-contrast);
+}
+
+.bookmarks-shelf-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.bookmarks-shelf-breadcrumbs {
+    margin: 2px 0 7px;
+}
+
+.bookmarks-shelf-breadcrumbs ol {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    list-style: none;
+    font-size: var(--ui-font-11);
+    color: var(--muted);
+}
+
+.bookmarks-shelf-breadcrumbs li {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.bookmarks-shelf-breadcrumbs li + li::before {
+    content: "/";
+    margin-right: 5px;
+    color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.bookmarks-shelf-breadcrumbs button {
+    min-height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.bookmarks-shelf-breadcrumbs [aria-current="page"] {
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bookmarks-shelf-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+    max-height: min(340px, 46vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-block: contain;
+    padding: 4px 0;
+    border-top: 1px solid
+        color-mix(in srgb, var(--workspace-accent-border) 12%, transparent);
+    scrollbar-width: thin;
+    scrollbar-color: var(--warm-gray) transparent;
+}
+
+.bookmarks-shelf-row {
+    min-width: 0;
+}
+
+.bookmarks-shelf-row > button {
+    width: 100%;
+    min-height: 40px;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.bookmarks-shelf-row > button:hover,
+.bookmarks-shelf-row > button:focus-visible {
+    background: color-mix(in srgb, var(--workspace-accent-soft) 48%, transparent);
+}
+
+.bookmarks-shelf-row-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--workspace-accent);
+    line-height: 1;
+}
+
+.bookmarks-shelf-favicon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    object-fit: contain;
+}
+
+.bookmarks-shelf-favicon-fallback {
+    color: var(--workspace-accent);
+}
+
+.bookmarks-shelf-row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.bookmarks-shelf-row-title,
+.bookmarks-shelf-row-url,
+.bookmarks-shelf-row-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bookmarks-shelf-row-title {
+    font-size: var(--ui-font-12);
+    font-weight: 600;
+}
+
+.bookmarks-shelf-row-url,
+.bookmarks-shelf-row-path {
+    font-size: var(--ui-font-10);
+    color: var(--muted);
+}
+
+.bookmarks-shelf-state,
+.bookmarks-shelf-empty,
+.bookmarks-shelf-notice,
+.bookmarks-shelf-gate {
+    padding: 9px 2px;
+    color: var(--muted);
+    font-size: var(--ui-font-12);
+    line-height: 1.55;
+}
+
+.bookmarks-shelf-gate-title,
+.bookmarks-shelf-error strong {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--ink);
+    font-family: "Libre Caslon Display", serif;
+    font-size: var(--ui-font-16);
+    font-weight: 400;
+}
+
+.bookmarks-shelf-gate-copy {
+    max-width: 480px;
+}
+
+.bookmarks-shelf-gate-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.bookmarks-shelf-gate-actions .is-secondary {
+    margin-left: 0;
+}
+
+.bookmarks-shelf-error span {
+    display: block;
+}
+
+.bookmarks-shelf-error .bookmarks-shelf-action {
+    margin: 6px 0 0;
+}
+
+.bookmarks-shelf:is(
+    [data-status="permission-required"],
+    [data-status="denied"],
+    [data-status="revoked"]
+) .bookmarks-shelf-toolbar {
+    display: none;
+}
+
+/* ---- Duplicate native Chrome-group resolution ---- */
+.chrome-group-conflicts {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.chrome-group-conflicts:empty {
+    margin-bottom: 0;
+}
+
+.chrome-group-conflict {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px 8px 12px;
+    border-left: 2px solid var(--status-cooling);
+    border-radius: 0 10px 10px 0;
+    background: color-mix(in srgb, var(--workspace-accent-soft) 24%, transparent);
+}
+
+.chrome-group-conflict-copy {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    gap: 2px;
+}
+
+.chrome-group-conflict-title {
+    color: var(--ink);
+    font-size: var(--ui-font-12);
+    font-weight: 600;
+}
+
+.chrome-group-conflict-meta {
+    color: var(--muted);
+    font-size: var(--ui-font-10);
+}
+
+.chrome-group-conflict-action {
+    min-height: 34px;
+    border: none;
+    border-radius: 999px;
+    padding: 6px 10px;
+    background: transparent;
+    color: var(--workspace-chip-text);
+    font: inherit;
+    font-size: var(--ui-font-11);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chrome-group-conflict-action:hover,
+.chrome-group-conflict-action:focus-visible {
+    background: var(--workspace-chip-bg);
+}
+
+.chrome-group-merge-dialog {
+    width: min(520px, calc(100vw - 32px));
+    max-height: min(680px, calc(100vh - 48px));
+    margin: auto;
+    padding: 0;
+    border: 1px solid
+        color-mix(in srgb, var(--workspace-accent-border) 38%, var(--warm-gray) 62%);
+    border-radius: 18px;
+    background: var(--card-bg);
+    color: var(--ink);
+    box-shadow: 0 24px 64px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.chrome-group-merge-dialog::backdrop {
+    background: color-mix(in srgb, var(--ink) 22%, transparent);
+    backdrop-filter: blur(2px);
+}
+
+.chrome-group-merge-form {
+    display: grid;
+    gap: 16px;
+    padding: 20px;
+}
+
+.chrome-group-merge-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.chrome-group-merge-head > div {
+    flex: 1;
+    min-width: 0;
+}
+
+.chrome-group-merge-head h2 {
+    font-family: "Libre Caslon Display", serif;
+    font-size: var(--ui-font-22);
+    font-weight: 400;
+}
+
+.chrome-group-merge-head p {
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: var(--ui-font-12);
+    line-height: 1.5;
+}
+
+.chrome-group-merge-close {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border: none;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.chrome-group-merge-close svg {
+    width: 15px;
+    height: 15px;
+}
+
+.chrome-group-merge-options {
+    min-width: 0;
+    max-height: 400px;
+    overflow-y: auto;
+    display: grid;
+    gap: 6px;
+    border: none;
+}
+
+.chrome-group-merge-option {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    min-height: 48px;
+    padding: 9px;
+    border-radius: 11px;
+    cursor: pointer;
+}
+
+.chrome-group-merge-option.is-selected,
+.chrome-group-merge-option:focus-within {
+    background: var(--workspace-chip-bg);
+}
+
+.chrome-group-merge-option input {
+    margin-top: 2px;
+    accent-color: var(--workspace-accent);
+}
+
+.chrome-group-merge-option-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.chrome-group-merge-option-title {
+    font-size: var(--ui-font-12);
+    font-weight: 600;
+}
+
+.chrome-group-merge-option-tabs {
+    color: var(--muted);
+    font-size: var(--ui-font-11);
+    line-height: 1.45;
+}
+
+.chrome-group-merge-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.chrome-group-merge-button {
+    min-height: 38px;
+    border: none;
+    border-radius: 999px;
+    padding: 7px 14px;
+    background: var(--workspace-chip-text);
+    color: var(--workspace-accent-contrast);
+    font: inherit;
+    font-size: var(--ui-font-12);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chrome-group-merge-button.is-secondary {
+    background: transparent;
+    color: var(--muted);
+}
+
+.chrome-group-merge-button:hover,
+.chrome-group-merge-button:focus-visible,
+.chrome-group-merge-close:hover,
+.chrome-group-merge-close:focus-visible {
+    background: var(--workspace-chip-bg);
+    color: var(--workspace-chip-text);
+}
+
+.bookmarks-shelf :is(button, input):focus-visible,
+.chrome-group-conflict-action:focus-visible,
+.chrome-group-merge-dialog :is(button, input):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: var(--focus-ring-shadow);
+}
+
 /* Manual column count for landscape layouts — portrait (<=960px) keeps auto-fill */
 @media (min-width: 961px) {
     .quick-tabs-grid.is-fixed-cols-4 {
@@ -1840,7 +2329,6 @@ body.group-dragging .group-nav-button {
     gap: 8px;
     transition:
         box-shadow 0.25s ease,
-        transform 0.25s ease,
         opacity 0.3s ease;
     cursor: pointer;
     position: relative;
@@ -1908,9 +2396,10 @@ body.group-dragging .group-nav-button {
 }
 
 .mission-card:hover {
+    /* Keep the card's hit box stationary. Moving the whole card on hover can
+       repeatedly lose/reacquire :hover when the pointer sits on an edge. */
     box-shadow: 0 16px 30px
         color-mix(in srgb, var(--workspace-accent) 12%, transparent);
-    transform: translateY(-1px);
 }
 
 /* Closing animation — card scales down and fades out */
@@ -4428,6 +4917,25 @@ body.entry-animations-enabled .deferred-column .section-header {
     }
     .quick-tabs-grid {
         gap: 12px 10px;
+    }
+    .bookmarks-shelf-toolbar {
+        flex-wrap: wrap;
+    }
+    .bookmarks-shelf-search {
+        flex-basis: min(220px, 100%);
+    }
+    .bookmarks-shelf-action.is-secondary {
+        margin-left: 0;
+    }
+    .chrome-group-conflict {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+    .chrome-group-conflict-action {
+        margin-left: auto;
+    }
+    .chrome-group-merge-form {
+        padding: 17px;
     }
     .theme-menu {
         width: min(320px, calc(100vw - 32px));

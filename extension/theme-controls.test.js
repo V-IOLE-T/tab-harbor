@@ -188,6 +188,13 @@ test('normalizeThemePreferences rejects non-boolean closeDuplicateNewTabsEnabled
   assert.equal(normalizeThemePreferences({ closeDuplicateNewTabsEnabled: null }).closeDuplicateNewTabsEnabled, false);
 });
 
+test('normalizeThemePreferences keeps bookmark favicons opt-in and boolean-only', () => {
+  assert.equal(normalizeThemePreferences({}).bookmarksShowFavicons, false);
+  assert.equal(normalizeThemePreferences({ bookmarksShowFavicons: true }).bookmarksShowFavicons, true);
+  assert.equal(normalizeThemePreferences({ bookmarksShowFavicons: 'true' }).bookmarksShowFavicons, false);
+  assert.equal(normalizeThemePreferences({ bookmarksShowFavicons: 1 }).bookmarksShowFavicons, false);
+});
+
 test('getResolvedTone follows system preference when mode is system', () => {
   const originalMatchMedia = globalThis.window.matchMedia;
   globalThis.window.matchMedia = query => ({
