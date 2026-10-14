@@ -4666,6 +4666,18 @@ function getRealTabs() {
 }
 
 
+/**
+ * updateOpenTabsStat(realTabs)
+ *
+ * Footer "open tabs" count. Counts the same tabs the cards list, so Tab
+ * Harbor's own page and other browser-internal pages are not included.
+ */
+function updateOpenTabsStat(realTabs = getRealTabs()) {
+  const statTabs = document.getElementById('statTabs');
+  if (statTabs) statTabs.textContent = realTabs.length;
+}
+
+
 /* ----------------------------------------------------------------
    OVERFLOW CHIPS ("+N more" expand button in domain cards)
    ---------------------------------------------------------------- */
@@ -5559,8 +5571,7 @@ function renderOpenTabsArea(realTabs = getRealTabs()) {
     if (openTabsSectionCount) openTabsSectionCount.textContent = runtimeT ? runtimeT('emptyTabsCount') : '0 domains';
   }
 
-  const statTabs = document.getElementById('statTabs');
-  if (statTabs) statTabs.textContent = openTabs.length;
+  updateOpenTabsStat(realTabs);
 
   if (groupRenameEditorState?.shouldFocus) {
     const focusKey = String(groupRenameEditorState.groupKey || '');
@@ -6151,8 +6162,7 @@ document.addEventListener('click', async (e) => {
     }
 
     // Update footer
-    const statTabs = document.getElementById('statTabs');
-    if (statTabs) statTabs.textContent = openTabs.length;
+    updateOpenTabsStat();
 
     showToast(runtimeT ? runtimeT('toastTabClosed') : 'Tab closed');
     return;
@@ -6449,8 +6459,7 @@ document.addEventListener('click', async (e) => {
         ? runtimeT('closedTabsFromGroup', { count: closedCount, tabsWord, groupLabel })
         : `Closed ${closedCount} ${tabsWord} from ${groupLabel}`);
 
-      const statTabs = document.getElementById('statTabs');
-      if (statTabs) statTabs.textContent = openTabs.length;
+      updateOpenTabsStat();
       return;
     } finally {
       // A rejected close/query/render must not strand the event-driven tab
