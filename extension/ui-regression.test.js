@@ -1545,3 +1545,9 @@ test('hitokoto uses cached text and refreshes in the background without blocking
   assert.doesNotMatch(renderStaticDashboardBody, /await fetchHitokoto/);
   assert.doesNotMatch(renderStaticDashboardBody, /refreshHitokotoInBackground/);
 });
+
+test('footer open-tabs count matches the listed tabs, excluding Tab Harbor and browser pages', () => {
+  assert.match(runtimeJs, /function updateOpenTabsStat\(realTabs = getRealTabs\(\)\) \{[\s\S]*?statTabs\.textContent = realTabs\.length;/);
+  assert.match(runtimeJs, /function renderOpenTabsArea\(realTabs = getRealTabs\(\)\) \{[\s\S]*?updateOpenTabsStat\(realTabs\);/);
+  assert.doesNotMatch(runtimeJs, /statTabs\.textContent = openTabs\.length/);
+});
