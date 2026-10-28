@@ -15,7 +15,7 @@
  * no longer pins focus to the address bar and focus() (or the autofocus
  * attribute) takes effect.
  *
- * This script must be the FIRST script in <head> so the redirect happens
+ * This script must run after the startup theme and before dashboard scripts so the redirect happens
  * before any dashboard logic runs. It is intentionally small and dependency
  * free. location.replace() starts an immediate navigation; the current page is
  * torn down before later scripts meaningfully run.

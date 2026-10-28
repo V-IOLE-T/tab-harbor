@@ -6,7 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tab Harbor</title>
 
-  <!-- New-tab focus workaround: must run before any other script. On a fresh
+  <!-- Apply the startup palette before the focus redirect and screen styles. -->
+  <script src="theme-palettes.js"></script>
+  <script src="theme-startup.js"></script>
+
+  <!-- New-tab focus workaround: must run before dashboard scripts. On a fresh
        Ctrl+T tab Chrome pins focus to the address bar; a one-time self
        navigation (?focus=1) turns the page into a navigated page so the
        search field can claim focus. See focus-redirect.js. -->

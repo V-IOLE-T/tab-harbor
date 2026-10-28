@@ -1,7 +1,7 @@
 /* ============================================================
    Tab Harbor — Dashboard Styles
    Living stylesheet for the new-tab dashboard. Theme palettes
-   and their variables live in theme-controls.js (THEME_FAMILIES);
+   and their variables live in theme-palettes.js;
    this sheet consumes them via var().
    ============================================================ */
 
