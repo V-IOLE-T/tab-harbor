@@ -12,11 +12,11 @@
        search field can claim focus. See focus-redirect.js. -->
   <script src="focus-redirect.js"></script>
 
-  <!-- Google Fonts: Libre Caslon Display (editorial display) + Public Sans (UI body) -->
+  <!-- Fetch optional fonts without blocking startup; app.js enables them after mount. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link
     href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=Public+Sans:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
+    rel="stylesheet" media="print" id="optionalFonts">
 
   <link rel="stylesheet" href="style.css">
 </head>
