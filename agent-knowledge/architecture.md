@@ -31,6 +31,8 @@ config.js → config-loader.js → icon-utils.js → session-groups.js → group
 
 ## 模块职责地图
 
+主页卡片通过 `dashboard-runtime.js` 的 `focusTab` 切换到已打开的标签页；目标激活、窗口聚焦和标签组展开成功后，`closeDashboardAfterTabFocus` 只关闭缓存 ID 对应且仍为 Tab Harbor 新标签页的来源页。切换失败、来源页已导航或目标就是来源页时不关闭；清理失败不重试跳转。搜索建议沿用原有行为。
+
 | 文件 | 职责 | 备注 |
 |---|---|---|
 | `app.js` | 编排入口，调 `mountDashboardRuntime` 等 | 保持薄 |

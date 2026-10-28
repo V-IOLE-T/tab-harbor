@@ -3627,6 +3627,16 @@ function ensureWindowsKeepLastTab(allTabs, toCloseIds) {
  * matched (exact match first, then hostname fallback). Also brings the
  * window to the front.
  */
+async function closeDashboardAfterTabFocus(targetTabId) {
+  if (currentDashboardTabId == null || currentDashboardTabId === targetTabId) return;
+  try {
+    const dashboardTab = await chrome.tabs.get(currentDashboardTabId);
+    if (isTabHarborNewTabUrl(dashboardTab.url || '')) {
+      await chrome.tabs.remove(dashboardTab.id);
+    }
+  } catch { /* Closing the dashboard must not undo a successful tab switch. */ }
+}
+
 async function focusTab(url, tabId = null) {
   if (!url && !tabId) return;
   const numericTabId = getTabIdValue(tabId);
@@ -3639,6 +3649,7 @@ async function focusTab(url, tabId = null) {
         if (typeof syncChromeTabGroupExpansionForTab === 'function') {
           await syncChromeTabGroupExpansionForTab(targetTab);
         }
+        await closeDashboardAfterTabFocus(targetTab.id);
         return true;
       }
     } catch { /* fall back to URL matching */ }
@@ -3669,6 +3680,7 @@ async function focusTab(url, tabId = null) {
   if (typeof syncChromeTabGroupExpansionForTab === 'function') {
     await syncChromeTabGroupExpansionForTab(match);
   }
+  await closeDashboardAfterTabFocus(match.id);
   return true;
 }
 

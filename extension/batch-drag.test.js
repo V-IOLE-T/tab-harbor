@@ -1943,3 +1943,48 @@ test('restoreChromeGroupsForSession reports a metadata half-success without aban
     delete globalThis.chrome;
   }
 });
+
+// @lat: [[tab-navigation#Close the dashboard after switching]]
+test('focusTab closes only its dashboard after a successful switch', async () => {
+  for (const mode of ['id', 'url', 'missing', 'failed', 'navigated', 'self', 'close-failed', 'uncached']) {
+    const calls = [];
+    const target = { id: mode === 'self' ? 90 : 42, windowId: 7, url: 'https://example.com/' };
+    const chrome = {
+      tabs: {
+        get: async id => {
+          if (id === 90) return { id, url: mode === 'navigated' ? 'https://other.example/' : 'chrome://newtab/' };
+          return target;
+        },
+        update: async id => {
+          calls.push(['activate', id]);
+          if (mode === 'failed') throw new Error('activation failed');
+        },
+        remove: async id => {
+          calls.push(['remove', id]);
+          if (mode === 'close-failed') throw new Error('already closed');
+        },
+      },
+      windows: { update: async id => calls.push(['focus-window', id]) },
+    };
+    const focus = new Function('chrome', 'currentDashboardTabId', `
+      const getTabIdValue = value => value == null ? null : Number(value);
+      const queryTabsForDashboardWindow = async () => ${mode === 'missing' ? '[]' : '[{ id: 42, windowId: 7, url: "https://example.com/" }]'};
+      const runtimeGetCanonicalTabUrl = null;
+      const getTabCanonicalUrl = tab => tab.url;
+      const syncChromeTabGroupExpansionForTab = async () => {};
+      const isTabHarborNewTabUrl = url => url === 'chrome://newtab/';
+      ${extractFn(runtimeJs, 'closeDashboardAfterTabFocus')}
+      ${extractFn(runtimeJs, 'focusTab')}
+      return focusTab;
+    `)(chrome, mode === 'uncached' ? null : 90);
+    const result = focus('https://example.com/', ['url', 'missing'].includes(mode) ? null : target.id);
+    if (mode === 'failed') {
+      await assert.rejects(result, /activation failed/);
+    } else {
+      assert.equal(await result, mode !== 'missing');
+    }
+    const shouldClose = ['id', 'url', 'close-failed'].includes(mode);
+    assert.deepEqual(calls.filter(call => call[0] === 'remove'), shouldClose ? [['remove', 90]] : [], mode);
+    if (shouldClose) assert.deepEqual(calls.slice(0, 2), [['activate', 42], ['focus-window', 7]]);
+  }
+});
