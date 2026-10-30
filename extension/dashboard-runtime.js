@@ -2421,6 +2421,11 @@ async function restoreSavedTabSession(sessionId) {
     await saveSessionGroups(nextSessionGroups);
     await renderDashboard();
 
+    // Close the originating new tab only after the restored workspace is saved.
+    if (restoredTabs.length > 0) {
+      await closeDashboardAfterTabFocus(restoredTabs[0].id);
+    }
+
     return {
       restoredCount: restoredTabs.length,
       windowId,
