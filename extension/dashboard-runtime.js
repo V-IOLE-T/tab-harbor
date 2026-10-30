@@ -113,6 +113,7 @@ const {
 const {
   addSavedTabSession: runtimeAddSavedTabSession,
   appendSavedTabSessionTabs: runtimeAppendSavedTabSessionTabs,
+  updateSavedTabSessionTabs: runtimeUpdateSavedTabSessionTabs,
   buildSessionSnapshot: runtimeBuildSessionSnapshot,
   createRestoredSessionGroups: runtimeCreateRestoredSessionGroups,
   getSavedTabSessions: runtimeGetSavedTabSessions,
@@ -1954,6 +1955,39 @@ async function appendTabsToExistingSavedSession(sessionId, tabIds = []) {
   };
 }
 
+async function replaceTabsInExistingSavedSession(sessionId, tabIds = []) {
+  if (!runtimeBuildSessionSnapshot || !runtimeUpdateSavedTabSessionTabs) {
+    throw new Error('Session storage is unavailable');
+  }
+
+  const realTabs = await refreshTabSessionModel();
+  const selectedTabs = getTabsByIds(tabIds, realTabs);
+  const selectedIds = new Set((tabIds || []).map(String).filter(Boolean));
+  const snapshot = runtimeBuildSessionSnapshot({
+    tabs: selectedTabs,
+    groupLookup: getTabGroupLookup(),
+    selectedTabIds: [...selectedIds],
+    source: 'replace-existing',
+    now: new Date().toISOString(),
+  });
+
+  const sessions = await runtimeUpdateSavedTabSessionTabs(sessionId, snapshot.tabs);
+  const tabIdsToClose = selectedTabs
+    .filter(tab => selectedIds.has(String(tab?.id)) && (runtimeIsRestorableTabUrl ? runtimeIsRestorableTabUrl(tab?.url || '') : true))
+    .map(tab => getTabIdValue(tab?.id))
+    .filter(Number.isFinite);
+  const closeResult = await closeSavedSessionSourceTabs(tabIdsToClose);
+
+  return {
+    sessions,
+    session: sessions.find(session => String(session?.id || '') === String(sessionId || '')) || null,
+    selectedCount: snapshot.tabs.length,
+    closedCount: closeResult.closedCount,
+    closedTabIds: [...closeResult.closedTabIds],
+    closeError: closeResult.closeError,
+  };
+}
+
 async function submitTodoEditor() {
   const editorState = getTodoEditorState ? getTodoEditorState() : {};
   const title = String(editorState.title || '').trim();
@@ -2062,7 +2096,9 @@ async function openTabSessionPicker({
     : allIds;
   tabSessionPickerState = {
     open: true,
-    mode: tabSessionPickerState.mode === 'existing' && savedSessions.length ? 'existing' : 'new',
+    mode: ['existing', 'replace'].includes(tabSessionPickerState.mode) && savedSessions.length
+      ? tabSessionPickerState.mode
+      : 'new',
     source,
     selectedTabIds: initialSelectedIds,
     newSessionName: tabSessionPickerState.newSessionName || '',
@@ -2098,7 +2134,7 @@ function renderTabSessionPicker(groups = tabSessionPickerState.groups) {
   const selectedIds = new Set(getTabSessionPickerSelectedIds());
   const selectedCount = selectedIds.size;
   const existingDisabled = savedSessions.length === 0;
-  const mode = tabSessionPickerState.mode === 'existing' && !existingDisabled ? 'existing' : 'new';
+  const mode = ['existing', 'replace'].includes(tabSessionPickerState.mode) && !existingDisabled ? tabSessionPickerState.mode : 'new';
   const targetSessionId = tabSessionPickerState.targetSessionId || String(savedSessions[0]?.id || '');
   const safeTargetSessionId = runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(targetSessionId) : targetSessionId.replace(/"/g, '&quot;');
   const safeSelectLabel = runtimeEscapeHtmlAttribute
@@ -2175,10 +2211,11 @@ function renderTabSessionPicker(groups = tabSessionPickerState.groups) {
         <span class="session-picker-count">${runtimeT ? runtimeT('sessionPickerSelectedCount', { count: selectedCount }) : `${selectedCount} selected`}</span>
         <div class="session-picker-save-mode" role="group" aria-label="${runtimeT ? runtimeT('sessionPickerModeLabel') : 'Save mode'}">
           <button class="session-picker-mode-button${mode === 'new' ? ' is-active' : ''}" type="button" data-action="select-session-picker-mode" data-session-picker-mode="new" aria-pressed="${mode === 'new'}">${runtimeT ? runtimeT('sessionPickerNewSession') : 'New group'}</button>
-          <button class="session-picker-mode-button${mode === 'existing' ? ' is-active' : ''}" type="button" data-action="select-session-picker-mode" data-session-picker-mode="existing" aria-pressed="${mode === 'existing'}"${existingDisabled ? ' disabled' : ''}>${runtimeT ? runtimeT('sessionPickerExistingSession') : 'Existing group'}</button>
+          <button class="session-picker-mode-button${mode === 'existing' ? ' is-active' : ''}" type="button" data-action="select-session-picker-mode" data-session-picker-mode="existing" aria-pressed="${mode === 'existing'}"${existingDisabled ? ' disabled' : ''}>${runtimeT ? runtimeT('sessionPickerExistingSession') : 'Join existing group'}</button>
+          <button class="session-picker-mode-button${mode === 'replace' ? ' is-active' : ''}" type="button" data-action="select-session-picker-mode" data-session-picker-mode="replace" aria-pressed="${mode === 'replace'}"${existingDisabled ? ' disabled' : ''}>${runtimeT ? runtimeT('sessionPickerReplaceSession') : 'Replace group'}</button>
         </div>
         <input class="session-picker-name-input" type="text" data-action="change-session-picker-new-name" value="${safeNewSessionName}" placeholder="${safeNamePlaceholder}" aria-label="${safeNamePlaceholder}"${mode === 'new' ? '' : ' hidden disabled'}>
-        <select class="session-picker-target-select" data-action="change-session-picker-target" aria-label="${safeSelectLabel}"${mode === 'existing' && !existingDisabled ? '' : ' hidden disabled'}>
+        <select class="session-picker-target-select" data-action="change-session-picker-target" aria-label="${safeSelectLabel}"${['existing', 'replace'].includes(mode) && !existingDisabled ? '' : ' hidden disabled'}>
           ${savedSessions.length
             ? savedSessions.map(session => {
               const id = String(session?.id || '');
@@ -2189,7 +2226,9 @@ function renderTabSessionPicker(groups = tabSessionPickerState.groups) {
             : `<option value="">${runtimeT ? runtimeT('sessionPickerNoSavedSessions') : 'No saved sessions yet'}</option>`}
         </select>
         <button class="action-btn save-tabs" type="button" data-action="save-selected-session-tabs"${selectedCount ? '' : ' disabled'}>
-          ${mode === 'existing'
+          ${mode === 'replace'
+            ? (runtimeT ? runtimeT('sessionPickerReplaceExisting') : 'Replace group')
+            : mode === 'existing'
             ? (runtimeT ? runtimeT('sessionPickerAddToExisting') : 'Add to session')
             : (runtimeT ? runtimeT('sessionPickerSaveAndClose') : 'Save and close')}
         </button>
@@ -2205,10 +2244,12 @@ async function submitTabSessionPicker() {
   }
 
   try {
-    if (tabSessionPickerState.mode === 'existing') {
+    if (tabSessionPickerState.mode === 'existing' || tabSessionPickerState.mode === 'replace') {
       const targetSessionId = tabSessionPickerState.targetSessionId || String(tabSessionPickerState.savedSessions?.[0]?.id || '');
       if (!targetSessionId) throw new Error('Session not found');
-      const result = await appendTabsToExistingSavedSession(targetSessionId, selectedIds);
+      const result = tabSessionPickerState.mode === 'replace'
+        ? await replaceTabsInExistingSavedSession(targetSessionId, selectedIds)
+        : await appendTabsToExistingSavedSession(targetSessionId, selectedIds);
       tabSessionPickerState = {
         ...tabSessionPickerState,
         open: false,
@@ -2217,9 +2258,15 @@ async function submitTabSessionPicker() {
       await renderDashboard();
       const skipped = result?.skippedDuplicateCount || 0;
       const closedCount = result?.closedCount || 0;
-      showToast(runtimeT
-        ? runtimeT('toastSessionTabsAdded', { count: result?.appendedCount || 0, closedCount, skipped })
-        : `Added ${result?.appendedCount || 0} tabs; closed ${closedCount} originals${skipped ? `, skipped ${skipped} duplicates` : ''}`);
+      if (tabSessionPickerState.mode === 'replace') {
+        showToast(runtimeT
+          ? runtimeT('toastSessionReplaced', { count: result?.selectedCount || 0, closedCount })
+          : `Replaced group with ${result?.selectedCount || 0} tabs; closed ${closedCount} originals`);
+      } else {
+        showToast(runtimeT
+          ? runtimeT('toastSessionTabsAdded', { count: result?.appendedCount || 0, closedCount, skipped })
+          : `Added ${result?.appendedCount || 0} tabs; closed ${closedCount} originals${skipped ? `, skipped ${skipped} duplicates` : ''}`);
+      }
       return;
     }
 
@@ -5992,7 +6039,8 @@ document.addEventListener('click', async (e) => {
 
   if (action === 'select-session-picker-mode') {
     e.preventDefault();
-    const nextMode = actionEl.dataset.sessionPickerMode === 'existing' ? 'existing' : 'new';
+    const requestedMode = actionEl.dataset.sessionPickerMode || 'new';
+    const nextMode = ['existing', 'replace'].includes(requestedMode) ? requestedMode : 'new';
     if (nextMode === 'existing' && !tabSessionPickerState.savedSessions?.length) return;
     tabSessionPickerState = {
       ...tabSessionPickerState,

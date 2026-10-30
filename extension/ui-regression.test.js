@@ -62,6 +62,9 @@ test('saved tabs page keeps session management while home owns session save acti
   assert.match(runtimeJs, /data-action="save-current-window-session"/);
   assert.match(runtimeJs, /id="tabSessionPicker"/);
   assert.match(runtimeJs, /data-action="select-session-picker-mode"[\s\S]*data-session-picker-mode="existing"/);
+  assert.match(runtimeJs, /data-session-picker-mode="replace"/);
+  assert.match(runtimeJs, /async function replaceTabsInExistingSavedSession\(sessionId, tabIds = \[\]\)/);
+  assert.match(runtimeJs, /runtimeUpdateSavedTabSessionTabs\(sessionId, snapshot\.tabs\)/);
   assert.match(runtimeJs, /data-action="change-session-picker-new-name"/);
   assert.match(runtimeJs, /sessionPickerNewSessionNamePlaceholder/);
   assert.match(runtimeJs, /data-action="change-session-picker-target"/);
@@ -1552,3 +1555,4 @@ test('footer open-tabs count matches the listed tabs, excluding Tab Harbor and b
   assert.match(runtimeJs, /function renderOpenTabsArea\(realTabs = getRealTabs\(\)\) \{[\s\S]*?updateOpenTabsStat\(realTabs\);/);
   assert.doesNotMatch(runtimeJs, /statTabs\.textContent = openTabs\.length/);
 });
+
