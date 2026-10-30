@@ -4849,14 +4849,14 @@ function renderDomainCard(group) {
   const totalExtras = dupeUrls.reduce((s, [, c]) => s + c - 1, 0);
 
   const dupeBadge = hasDupes
-    ? `<span class="duplicate-count-badge">
+    ? `<button class="duplicate-count-action" type="button" data-action="dedup-keep-one" data-dupe-urls="${dupeUrls.map(([url]) => encodeURIComponent(url)).join(',')}" aria-label="${runtimeT ? runtimeT('closedDuplicatesCount', { count: totalExtras, suffix: totalExtras !== 1 ? 's' : '' }) : `Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`}">
         ${runtimeT
-          ? runtimeT('duplicatesCount', {
+          ? runtimeT('closedDuplicatesCount', {
               count: totalExtras,
               suffix: totalExtras !== 1 ? 's' : '',
             })
-          : `${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`}
-      </span>`
+          : `Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`}
+      </button>`
     : '';
 
   const orderedTabs = getOrderedUniqueTabsForGroup(group);
@@ -4888,7 +4888,6 @@ function renderDomainCard(group) {
         ${ICONS.close}
       </button>`;
 
-  const dupeUrlsEncoded = hasDupes ? dupeUrls.map(([url]) => encodeURIComponent(url)).join(',') : '';
   // Header actions, left to right: close duplicates, merge into a Chrome
   // group, sleep all in group, save session, close group. All are icon
   // buttons in the same quiet header style (30×30, muted → ink on hover).
@@ -4897,13 +4896,10 @@ function renderDomainCard(group) {
     <button class="group-action-icon" type="button" data-action="group-card-tabs" data-domain-id="${stableId}" aria-label="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}" data-tooltip="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}">
       ${ICONS.mergeGroup}
     </button>`;
-  const dedupLabel = runtimeT
-    ? runtimeT('closedDuplicatesCount', { count: totalExtras, suffix: totalExtras !== 1 ? 's' : '' })
-    : `Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}`;
-  const dedupButton = hasDupes ? `
-    <button class="group-action-icon" type="button" data-action="dedup-keep-one" data-dupe-urls="${dupeUrlsEncoded}" aria-label="${dedupLabel}" data-tooltip="${dedupLabel}">
-      ${ICONS.closeDuplicates}
-    </button>` : '';
+  // Duplicate cleanup is the single visible text action beside the group
+  // title. Keep the action out of the icon-only header controls so the count
+  // and consequence are clear without relying on a tooltip.
+  const dedupButton = '';
 
   // Chrome tab group colors: named enum colors map to dashboard accents, and
   // Chrome 132+ custom colors come back as raw hex (#rrggbb) — pass those

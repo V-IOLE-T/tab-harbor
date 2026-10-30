@@ -662,7 +662,7 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.tab-cleanup-banner\s*\{[\s\S]*border-radius:\s*999px;[\s\S]*flex:\s*0 0 auto;/);
   assert.match(css, /\.tab-cleanup-btn\s*\{[\s\S]*border-radius:\s*999px;/);
   assert.match(css, /\.tab-cleanup-btn:hover\s*\{[\s\S]*background:\s*var\(--banner-action-bg-hover\);/);
-  assert.match(css, /\.duplicate-count-badge\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
+  assert.match(css, /\.duplicate-count-action\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
   assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--workspace-chip-bg\)\s+92%,\s*var\(--card-bg\)\s+8%\s*\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
   assert.match(css, /\.action-btn\.close-tabs:hover\s*\{[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border-color:\s*var\(--workspace-accent-border\);/);
   assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--panel-card-opacity\),\s*transparent\s*\);/);

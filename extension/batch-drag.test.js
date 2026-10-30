@@ -798,12 +798,12 @@ test('sleeping a stale (ghost) chip re-renders instead of silently corrupting gr
   assert.match(runtimeJs, /} else if \(stale > 0\) \{\s*showToast\(runtimeT \? runtimeT\('toastTabAlreadyClosed'\) : 'Tab already closed'\);/);
 });
 
-test('close-duplicates and merge-group are header icon actions left of the sleep action', () => {
-  assert.match(runtimeJs, /const dedupButton = hasDupes \? `\s*<button class="group-action-icon" type="button" data-action="dedup-keep-one" data-dupe-urls="\$\{dupeUrlsEncoded\}" aria-label="\$\{dedupLabel\}" data-tooltip="\$\{dedupLabel\}">/);
+test('duplicate cleanup is one visible text button beside the group title', () => {
+  assert.match(runtimeJs, /const dupeBadge = hasDupes\s+\? `<button class="duplicate-count-action" type="button" data-action="dedup-keep-one"/);
+  assert.match(runtimeJs, /const dedupButton = '';/);
   // The merge action is hidden on cards that already ARE a Chrome group.
   assert.match(runtimeJs, /const mergeGroupButton = group\.isChromeGroup \? '' : `\s*<button class="group-action-icon" type="button" data-action="group-card-tabs" data-domain-id="\$\{stableId\}" aria-label="\$\{runtimeT \? runtimeT\('groupCardTabsLabel'\)/);
-  // Close-duplicates sits leftmost, then merge, then the sleep icon. The
-  // sleep icon is gated on there being anything left to sleep in the card.
+  // The icon-only header controls keep merge before the optional sleep action.
   assert.match(runtimeJs, /<div class="mission-actions">\s*\$\{dedupButton\}\s*\$\{mergeGroupButton\}\s*\$\{sleepControlEnabled && hasSleepableTabs \? `/);
   // Chrome group cards carry their native group id and color for the bar.
   assert.match(runtimeJs, /class="mission-card domain-card \$\{hasDupes \? 'has-amber-bar' : 'has-neutral-bar'\}\$\{group\.isChromeGroup \? ' chrome-group-card' : ''\}"[\s\S]{0,200}data-chrome-group-id="\$\{group\.chromeGroupId\}"[\s\S]{0,120}--chrome-group-color:\$\{chromeColor\}/);
