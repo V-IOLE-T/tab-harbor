@@ -5187,7 +5187,7 @@ function renderWorkspacePageSwitch(currentPage = 'home') {
   const homeActive = currentPage !== 'saved-tabs';
   const savedActive = currentPage === 'saved-tabs';
   const homeLabel = runtimeT ? runtimeT('workspacePageHome') : 'Home';
-  const savedLabel = runtimeT ? runtimeT('workspacePageSavedTabs') : 'Saved tabs';
+  const savedLabel = runtimeT ? runtimeT('workspacePageSavedTabs') : 'Collections';
 
   return `
     <nav class="workspace-page-switch" id="workspacePageSwitch" aria-label="Workspace pages">

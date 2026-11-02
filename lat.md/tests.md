@@ -140,7 +140,7 @@ Dashboard 启动、窗口 focus、页面 visibility 变化和搜索结果聚焦�
 
 ### 纵向列表与书签 favicon 偏好
 
-顶层、文件夹和搜索视图都应是单列纵向列表，使用 `overflow-y:auto` 且 `overflow-x:hidden`；长标题、中文、大量书签和窄屏均不依赖横向滚动。
+顶层、文件夹和搜索视图都应是单列纵向列表，在收藏区剩余高度内使用内部滚动，不撑长整个页面；长标题、中文、大量书签和窄屏均不依赖横向滚动。
 
 `bookmarksShowFavicons` 必须严格布尔、默认 false，由“桌面设置 → 功能”开启并随 `themePreferences` 持久化/导入导出。关闭时书签架和统一搜索都不解析书签 favicon；开启时两处只接受 Chrome `_favicon` URL，失败不得转向站点或第三方网络 fallback。
 
@@ -179,3 +179,13 @@ ArrowUp/ArrowDown 循环选择，Enter 激活，Escape 关闭并恢复焦点；�
 `node --test extension/*.test.js` 覆盖纯逻辑、模拟 Chrome API、manifest、搜索和 UI 回归；通过数不应写入长期架构文档。
 
 以上 Node 测试不能代替真实 Chrome 中的 service worker 唤醒、`storage.session` 重启生命周期、权限弹窗、原生组事件顺序、键盘/触屏和窄屏/暗色主题验证。
+
+## 收藏页两栏验收
+
+验证 [[features#收藏页两栏]] 同时展示会话和书签，不再通过按钮隐藏任一区域。
+
+`extension/ui-regression.test.js` 验证书签宿主仅位于收藏页、两个面板均无 hidden 属性、内容切换按钮已移除，以及中英文名称可用。浏览器布局检查还应确认宽屏两栏等宽且顶部对齐，窄屏按会话和书签顺序堆叠且无横向溢出。
+
+浏览器应使用长书签列表验证：不同窗口高度与窄屏下 document 不溢出视口，末项可通过列表内部滚动到达，搜索栏位置不随列表移动。
+
+少量书签在不同窗口高度下的相邻行距离应保持一致，空白留在列表底部，不均分到行间。

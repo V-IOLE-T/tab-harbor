@@ -430,7 +430,8 @@ test('search suggestions expose combobox semantics and stable active result ids'
 test('new bookmark and duplicate-group surfaces keep the quiet workspace language', () => {
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
   assert.match(css, /\.bookmarks-shelf \{[\s\S]{0,180}border-top: 1px solid/);
-  assert.match(css, /\.bookmarks-shelf-list \{[\s\S]{0,180}display:\s*grid;[\s\S]{0,260}overflow-x:\s*hidden;[\s\S]{0,100}overflow-y:\s*auto/);
+  assert.match(css, /\.bookmarks-shelf-list \{[^}]*align-content:\s*start;[^}]*grid-auto-rows:\s*max-content;/);
+  assert.match(css, /\.bookmarks-shelf-list \{[\s\S]{0,180}display:\s*grid;[\s\S]{0,260}max-height:\s*none;[\s\S]{0,100}overflow:\s*visible/);
   assert.doesNotMatch(css, /\.bookmarks-shelf\[data-view="root"\] \.bookmarks-shelf-list \{[\s\S]{0,180}overflow-x:\s*auto/);
   assert.match(css, /\.bookmarks-shelf-favicon \{[\s\S]{0,140}width:\s*16px;[\s\S]{0,80}height:\s*16px/);
   assert.match(css, /\.chrome-group-conflict \{[\s\S]{0,240}border-left: 2px solid/);
@@ -1611,4 +1612,20 @@ test('hitokoto locks one page entry while background warming only serves later t
   )?.[1] || '';
   assert.doesNotMatch(renderStaticDashboardBody, /await fetchHitokoto/);
   assert.doesNotMatch(renderStaticDashboardBody, /getHitokotoCache|warmHitokotoCacheInBackground/);
+});
+
+// @lat: [[tests#收藏页两栏验收]]
+test('collections displays saved sessions and bookmarks together outside home', () => {
+  const home = html.slice(html.indexOf('id="homePage"'), html.indexOf('id="savedTabsPage"'));
+  const collections = html.slice(html.indexOf('id="savedTabsPage"'), html.indexOf('id="drawerTriggerStack"'));
+  assert.doesNotMatch(home, /id="bookmarksShelfHost"/);
+  assert.equal((html.match(/id="bookmarksShelfHost"/g) || []).length, 1);
+  assert.match(collections, /id="collectionSessions"/);
+  assert.match(collections, /id="collectionBookmarks"/);
+  assert.match(collections, /id="bookmarksShelfHost"/);
+  assert.doesNotMatch(collections, /<section[^>]*\bhidden\b/);
+  assert.doesNotMatch(collections, /switch-collection-view/);
+  assert.match(collections, /<h2>Chrome bookmarks<\/h2>/);
+  assert.match(i18nJs, /workspacePageSavedTabs: 'Collections'/);
+  assert.match(i18nJs, /workspacePageSavedTabs: '收藏'/);
 });

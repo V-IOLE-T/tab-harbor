@@ -507,7 +507,7 @@ body.theme-tone-dark::before {
     width: 100%;
 }
 
-/* ---- Chrome bookmarks: a quiet, read-only continuation of quick links ---- */
+/* ---- Chrome bookmarks: a quiet, read-only collection ---- */
 .bookmarks-shelf-host {
     width: 100%;
     margin-top: 14px;
@@ -646,17 +646,15 @@ body.theme-tone-dark::before {
 
 .bookmarks-shelf-list {
     display: grid;
+    align-content: start;
+    grid-auto-rows: max-content;
     grid-template-columns: minmax(0, 1fr);
     gap: 1px;
-    max-height: min(340px, 46vh);
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior-block: contain;
+    max-height: none;
+    overflow: visible;
     padding: 4px 0;
     border-top: 1px solid
         color-mix(in srgb, var(--workspace-accent-border) 12%, transparent);
-    scrollbar-width: thin;
-    scrollbar-color: var(--warm-gray) transparent;
 }
 
 .bookmarks-shelf-row {
@@ -3460,12 +3458,117 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     gap: 14px;
 }
 
-.saved-tabs-header-spacer {
-    visibility: hidden;
-    pointer-events: none;
+body.showing-saved-tabs-page > .container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 24px;
+}
+
+.showing-saved-tabs-page #workspaceTopNav {
+    flex-shrink: 0;
+}
+
+.showing-saved-tabs-page #savedTabsPage {
+    flex: 1;
     min-height: 0;
-    margin: 0;
-    padding: 0;
+}
+
+.showing-saved-tabs-page .saved-tabs-columns {
+    height: 100%;
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.showing-saved-tabs-page .saved-tabs-columns > .active-section {
+    height: 100%;
+    min-height: 0;
+}
+
+.saved-tabs-columns > .active-section > .section-header {
+    flex-shrink: 0;
+}
+
+.saved-tabs-columns .saved-sessions-list,
+.saved-tabs-columns .saved-sessions-empty {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+.collection-bookmarks-section .bookmarks-shelf-host {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+.collection-bookmarks-section .bookmarks-shelf {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.collection-bookmarks-section .bookmarks-shelf > :not(.bookmarks-shelf-list) {
+    flex-shrink: 0;
+}
+
+.collection-bookmarks-section .bookmarks-shelf-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+}
+
+@media (max-width: 960px) {
+    .showing-saved-tabs-page .saved-tabs-columns {
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.dashboard-columns.saved-tabs-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-columns.saved-tabs-columns > .active-section {
+    grid-row: 1;
+    min-width: 0;
+}
+
+.dashboard-columns.saved-tabs-columns > .collection-bookmarks-section {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.saved-tabs-columns .section-header {
+    min-height: 30px;
+}
+
+.saved-tabs-columns .section-header h2 {
+    width: auto;
+    flex: 0 1 auto;
+}
+
+.collection-bookmarks-section .bookmarks-shelf-host {
+    margin-top: 0;
+}
+
+.collection-bookmarks-section .bookmarks-shelf {
+    padding-top: 0;
+    border-top: 0;
+}
+
+@media (max-width: 960px) {
+    .dashboard-columns.saved-tabs-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dashboard-columns.saved-tabs-columns > .active-section {
+        grid-column: 1;
+        grid-row: auto;
+    }
 }
 
 .saved-sessions-list {

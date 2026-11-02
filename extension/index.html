@@ -100,7 +100,6 @@
           <section class="quick-tabs" id="quickTabsSection">
             <div class="quick-tabs-grid" id="quickTabsList"></div>
           </section>
-          <div class="bookmarks-shelf-host" id="bookmarksShelfHost"></div>
         </div>
       </header>
 
@@ -126,7 +125,7 @@
 
     <main class="workspace-page" id="savedTabsPage" data-workspace-page="saved-tabs" hidden>
       <div class="dashboard-columns saved-tabs-columns">
-        <section class="active-section saved-sessions-section">
+        <section class="active-section saved-sessions-section" id="collectionSessions">
           <div class="section-header">
             <h2>Saved sessions</h2>
             <div class="section-line"></div>
@@ -137,7 +136,13 @@
             No saved sessions yet. Save a window when you want the memory back without losing the trail.
           </div>
         </section>
-        <div class="page-header saved-tabs-header-spacer" aria-hidden="true"></div>
+        <section class="active-section collection-bookmarks-section" id="collectionBookmarks" aria-label="Chrome bookmarks">
+          <div class="section-header">
+            <h2>Chrome bookmarks</h2>
+            <div class="section-line"></div>
+          </div>
+          <div class="bookmarks-shelf-host" id="bookmarksShelfHost"></div>
+        </section>
       </div>
     </main>
 

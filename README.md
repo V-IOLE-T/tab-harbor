@@ -62,6 +62,8 @@ The search field focuses itself whenever the Tab Harbor tab comes to the front, 
 
 ### Chrome bookmarks, by choice
 
+Open **Collections** to see **Saved sessions** on the left and **Chrome bookmarks** on the right. Both remain visible; on narrow screens they stack vertically, with sessions first.
+
 The bookmark shelf mirrors Chrome's bookmark bar without becoming a second bookmark database. It prefers the folder Chrome marks as `bookmarks-bar`; if that marker is unavailable, it falls back to the first folder below the browser bookmark root. Top-level bookmarks, folders, and search results use the same compact single-column list for easier scanning; breadcrumbs keep nested navigation in place. Chrome bookmark events keep the in-memory view current. Tab Harbor does not create, rename, move, or delete bookmarks.
 
 A normal click opens a bookmark in the current new-tab page. Ctrl/Cmd-click or middle-click opens it in a background tab, and Shift-click opens a new window. Tab Harbor blocks `javascript:`, `data:`, and `vbscript:` bookmark URLs. Any other syntactically valid URL is handed to Chrome; if Chrome cannot open it, the shelf shows feedback.
