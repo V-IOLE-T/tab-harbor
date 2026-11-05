@@ -18,7 +18,7 @@ test('material ranges remain finite and default material preserves legacy glass'
       const vars = math.computeMaterialVars({ material, materialIntensity });
       assert.ok(vars.materialIntensity >= 0 && vars.materialIntensity <= 100);
       for (const [name, value] of Object.entries(vars)) {
-        if (name.startsWith('--')) assert.ok(Number.isFinite(parseFloat(value)), name);
+        if (name.startsWith('--') && name !== '--glass-content-filter' && value !== 'initial') assert.ok(Number.isFinite(parseFloat(value)), name);
       }
     }
   }

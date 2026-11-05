@@ -102,7 +102,7 @@ test('cached Monet maps and glass paint both tones before storage resolves', () 
     const state = boot({ dark, cached: JSON.stringify({ mode: 'system', colorSource: 'wallpaper',
       wallpaperTheme, material: 'frosted', materialIntensity: 80, surfaceOpacity: 20 }) });
     assert.equal(state.properties['--paper'], dark ? '#102010' : '#f0fff0');
-    assert.equal(state.properties['--glass-blur'], '28px');
+    assert.equal(state.properties['--glass-blur'], '27px');
     assert.equal(state.properties['--custom-surface-opacity'], '17%');
   }
 });
@@ -138,6 +138,17 @@ test('clear opacity and independent overlay match shared runtime math before sto
     const expected = {...math.computeMaterialGlassVars(prefs), ...math.computeEffectiveOpacityVars(14,math.computeMaterialVars(prefs)), ...math.computeWallpaperOverlayVars(prefs)};
     for (const [key,value] of Object.entries(expected)) assert.equal(state.properties[key],value,key);
     assert.equal(JSON.parse(state.cache()).wallpaperOverlay,39);
+  }
+});
+
+test('frosted cached first paint matches runtime at all endpoints and legacy depths', () => {
+  const math = require('./theme-math.js');
+  for (const mode of ['light','dark']) for (const materialIntensity of [0,50,100]) for (const surfaceOpacity of [2,14,60]) {
+    const prefs = {mode,material:'frosted',materialIntensity,surfaceOpacity,wallpaperOverlay:37,wallpaperOverlayTint:0};
+    const state = boot({cached:JSON.stringify(prefs)});
+    const vars = math.computeMaterialVars(prefs);
+    const expected = {...math.computeMaterialGlassVars(prefs),...math.computeEffectiveOpacityVars(surfaceOpacity,vars),...math.computeWallpaperOverlayVars(prefs)};
+    for (const [key,value] of Object.entries(expected)) assert.equal(state.properties[key],value,key);
   }
 });
 

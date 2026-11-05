@@ -655,7 +655,7 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(themeJs, /'--workspace-accent-soft':/);
   assert.match(themeJs, /'--workspace-accent-border':/);
   assert.match(themeJs, /'--workspace-accent-contrast':/);
-  assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+calc\(var\(--custom-surface-opacity\)\s*\+\s*68%\s*\*\s*var\(--glass-surface-scale\)\),\s*transparent\s*\);/);
+  assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--glass-frosted-fill,\s*calc\(var\(--custom-surface-opacity\)\s*\+\s*68%\s*\*\s*var\(--glass-surface-scale\)\)\),\s*transparent\s*\);/);
   assert.match(css, /\.section-count\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);
   assert.match(css, /\.group-nav-button\s*\{[\s\S]*width:\s*40px;[\s\S]*height:\s*40px;/);
   assert.match(css, /\.group-nav-button::after\s*\{[\s\S]*background:\s*var\(--tooltip-surface\);[\s\S]*color:\s*var\(--tooltip-text\);[\s\S]*border:\s*1px solid var\(--tooltip-border\);/);
@@ -666,7 +666,7 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.duplicate-count-action\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
   assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(in srgb, color-mix\(\s*in\s+srgb,\s*var\(--workspace-chip-bg\)\s+92%,\s*var\(--card-bg\)\s+8%\s*\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
   assert.match(css, /\.action-btn\.close-tabs:hover\s*\{[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border-color:\s*var\(--workspace-accent-border\);/);
-  assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--panel-card-opacity\),\s*transparent\s*\);/);
+  assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--glass-frosted-fill,\s*var\(--panel-card-opacity\)\),\s*transparent\s*\);/);
   assert.match(css, /--tooltip-surface:\s*color-mix\(in srgb, color-mix\(\s*in\s+srgb,\s*var\(--workspace-accent-soft\)\s+32%,\s*var\(--card-bg\)\s+68%\s*\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);/);
   assert.match(css, /\.drawer-title-btn\.is-active,\s*\.drawer-title-btn\[aria-selected="true"\]\s*\{[\s\S]*text-decoration-color:\s*var\(--drawer-tab-underline-active\);/);
   assert.match(css, /\.archive-clear-btn\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);

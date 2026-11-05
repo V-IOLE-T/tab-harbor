@@ -27,10 +27,11 @@ try {
   });
   socket = new WebSocket(endpoint);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-  let sequence = 0; const pending = new Map(); const exceptions = [];
+  let sequence = 0; const pending = new Map(); const exceptions = []; const consoleErrors = [];
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails);
+    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') consoleErrors.push(message.params.args.map(a=>a.value ?? a.description).join(' '));
     if (!message.id) return;
     const call = pending.get(message.id); pending.delete(message.id);
     if (message.error) call.reject(new Error(JSON.stringify(message.error)));
@@ -53,7 +54,7 @@ try {
       Object.defineProperty(globalThis, 'TabHarborThemeStartup', {
         configurable:true, get:()=>api, set(value) {
           api=value;
-          globalThis.startupPaint=Object.fromEntries(['--paper','--glass-blur','--glass-surface-scale','--glass-control-scale','--glass-panel-min','--custom-surface-opacity','--wallpaper-overlay-opacity','--wallpaper-overlay-paper-share'].map(name=>[name,document.documentElement.style.getPropertyValue(name)]));
+          globalThis.startupPaint=Object.fromEntries(['--paper','--glass-blur','--glass-content-filter','--glass-frosted-fill','--glass-surface-scale','--glass-control-scale','--glass-panel-min','--custom-surface-opacity','--wallpaper-overlay-opacity','--wallpaper-overlay-paper-share'].map(name=>[name,document.documentElement.style.getPropertyValue(name)]));
         }
       });
     })()`}, sessionId);
@@ -352,6 +353,7 @@ try {
     console.log('Same-position mean RGB difference '+mode+': '+JSON.stringify(pixelDiff));
   }
   for (const target of surfacePeers) await send('Target.closeTarget',{targetId:target.targetId});
+  await (await import('./verify-frosted-browser.mjs')).verifyFrosted({dashboard,page,send,visualDir});
   await dashboard.evaluate('delete globalThis.reviewImage');
   console.log('Visual captures: '+visualDir);
   await dashboard.evaluate(`document.querySelectorAll('[data-opacity-probe]').forEach(n=>n.remove())`);
@@ -367,13 +369,13 @@ try {
   const popup = await page('popup/popup.html');
   await second.wait('!!document.querySelector(".wallpaper-video-element")?.src');
   assert.equal(await second.evaluate('TabOutThemeControls.getThemePreferences().videoMeta.resourceId'), originalId);
-  await second.wait('document.documentElement.style.getPropertyValue("--glass-blur") === "29px"');
+  await second.wait('document.documentElement.style.getPropertyValue("--glass-blur") === "28px"');
   await popup.wait('document.documentElement.style.getPropertyValue("--paper") === ' + JSON.stringify(saved.wallpaperTheme.dark['--paper']));
   for (const target of [dashboard, second, popup]) {
     await target.wait('document.documentElement.style.getPropertyValue("--workspace-accent-contrast") === ' + JSON.stringify(saved.wallpaperTheme.dark['--paper']));
   }
   await dashboard.evaluate('saveThemePreferences({materialIntensity: 20, mode:"light", wallpaperOverlay:63})');
-  await second.wait('document.documentElement.style.getPropertyValue("--glass-blur") === "14px"');
+  await second.wait('document.documentElement.style.getPropertyValue("--glass-blur") === "7px"');
   await popup.wait('document.documentElement.style.getPropertyValue("--paper") === ' + JSON.stringify(saved.wallpaperTheme.light['--paper']));
   for (const target of [second,popup]) await target.wait('document.documentElement.style.getPropertyValue("--wallpaper-overlay-opacity") === "0.63"');
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }, dashboard.sessionId);
@@ -415,6 +417,7 @@ try {
   await dashboard.evaluate('saveThemePreferences({materialIntensity:100})');
   assert.equal(await dashboard.evaluate('(async () => (await chrome.storage.local.get("themePreferences")).themePreferences.wallpaperOverlay)()'),48);
   assert.equal(await dashboard.evaluate('TabOutThemeControls.getThemePreferences().wallpaperOverlay'),48);
+  assert.deepEqual(consoleErrors, [], 'extension pages must not log console errors');
   assert.deepEqual(exceptions, [], 'extension pages must initialize and operate without runtime exceptions');
   console.log('PASS: real extension upload and Clear controls, image/video palette switching, poster cleanup, IDB, serial sliders, computed opacity, independent overlay, cached first paint, MCU, light/dark, popup, multi-page sync, reduced-motion, backup migration/isolation; zero runtime exceptions');
 } finally {

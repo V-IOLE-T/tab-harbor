@@ -33,6 +33,15 @@
   const VALID_MATERIALS = new Set(MATERIAL_ORDER);
   const DEFAULT_MATERIAL_INTENSITY = 50;
 
+  // Frosted fill endpoints, in percent. 0 strength is a legibility floor for
+  // body text over a busy wallpaper; 100 stays translucent so the wallpaper
+  // and the blur remain visible instead of turning into an opaque panel.
+  // Endpoints: 45% at 0, 60% at 50, 75% at 100 (monotonic, 0.3 per step).
+  const FROSTED_FILL_MIN = 45;
+  const FROSTED_FILL_STEP = 0.3;
+  const FROSTED_FILL_MAX = FROSTED_FILL_MIN + FROSTED_FILL_STEP * 100;
+
+
   function isHexColor(value) {
     return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
   }
@@ -133,7 +142,12 @@
       return {
         material: kind,
         materialIntensity: intensity,
-        '--glass-blur': `${10 + Math.round(intensity * 0.22)}px`,
+        '--glass-blur': `${1 + Math.round(intensity * 0.32)}px`,
+        '--glass-content-filter': `blur(${1 + Math.round(intensity * 0.32)}px) saturate(${100 + Math.round(intensity * 0.5)}%)`,
+        // The fill floor is legibility, not a decorative "thin glass" look:
+        // even at 0 the body text must stay readable on a busy wallpaper, and
+        // the top of the range still lets the wallpaper read through (76%).
+        '--glass-frosted-fill': `${FROSTED_FILL_MIN + intensity * FROSTED_FILL_STEP}%`,
         '--glass-saturate': `${100 + Math.round(intensity * 0.5)}%`,
         '--glass-surface-scale': (1 - intensity * 0.002).toFixed(3),
         '--glass-control-scale': '1',
@@ -148,6 +162,8 @@
         material: kind,
         materialIntensity: intensity,
         '--glass-blur': '0px',
+        '--glass-content-filter': 'none',
+        '--glass-frosted-fill': 'initial',
         '--glass-saturate': '100%',
         '--glass-surface-scale': (1 - intensity * 0.009).toFixed(3),
         '--glass-control-scale': (1 - intensity * 0.009).toFixed(3),
@@ -161,6 +177,8 @@
       material: 'default',
       materialIntensity: intensity,
       '--glass-blur': '10px',
+      '--glass-content-filter': 'none',
+      '--glass-frosted-fill': 'initial',
       '--glass-saturate': '100%',
       '--glass-surface-scale': '1',
       '--glass-control-scale': '1',
@@ -192,6 +210,13 @@
     const effective = materialVars['--glass-blur'] === '0px'
       ? Number((base * scale).toFixed(2)) : Math.max(2, Math.round(base * scale));
     return {
+      // Surface depth still nudges the frosted fill, so the existing depth
+      // preference keeps meaning. The nudge itself is clamped (not the final
+      // value) so fill stays strictly monotonic in strength for every depth and
+      // can never reach an opaque panel or drop under the legibility floor.
+      ...(materialVars['--glass-frosted-fill'] && materialVars['--glass-frosted-fill'] !== 'initial'
+        ? { '--glass-frosted-fill': `${Number((parseFloat(materialVars['--glass-frosted-fill'])
+          + clampNumber((base - 14) * 0.25, -2, 2, 0)).toFixed(2))}%` } : {}),
       '--custom-surface-opacity': `${effective}%`,
       '--custom-border-opacity': `${Math.max(8, effective)}%`,
       '--custom-badge-opacity': `${Math.max(3, Math.round(effective * 0.28))}%`,

@@ -48,6 +48,8 @@
        (default / frosted / clear) × intensity; the fallbacks below match the
        "default" material so the page is readable before any script runs. */
     --glass-blur: 10px;
+    --glass-content-filter: none;
+    --glass-frosted-fill: initial;
     --glass-saturate: 100%;
     --glass-surface-scale: 1;
     --glass-control-scale: 1;
@@ -389,7 +391,7 @@ body.has-video-wallpaper::after {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale))),
         transparent
     );
     box-shadow: 0 10px 22px
@@ -406,7 +408,7 @@ body.has-video-wallpaper::after {
         color-mix(in srgb, var(--workspace-accent) 14%, transparent);
     background: color-mix(
         in srgb,
-        var(--card-bg) calc((var(--control-surface-opacity) + 78%) * var(--glass-control-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc((var(--control-surface-opacity) + 78%) * var(--glass-control-scale))),
         var(--workspace-accent-soft) calc(4% * var(--glass-control-scale))
     );
 }
@@ -464,7 +466,7 @@ body.has-video-wallpaper::after {
     border-radius: 16px;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     box-shadow: 0 18px 34px
@@ -986,7 +988,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
     border-radius: 18px;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     box-shadow: 0 16px 30px
@@ -1298,7 +1300,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 body.theme-tone-dark .header-search-shell {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc((var(--control-surface-opacity) + 60%) * var(--glass-control-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc((var(--control-surface-opacity) + 60%) * var(--glass-control-scale))),
         transparent
     );
     border-color: color-mix(
@@ -1317,12 +1319,12 @@ body.theme-tone-dark .quick-shortcut-icon-wrap {
 }
 
 body.theme-tone-dark .theme-menu {
-    background: color-mix(in srgb, var(--card-bg) calc(100% * var(--glass-control-scale)), transparent);
+    background: color-mix(in srgb, var(--card-bg) var(--glass-frosted-fill, calc(100% * var(--glass-control-scale))), transparent);
     border-color: var(--warm-gray);
 }
 
 body.theme-tone-dark .deferred-shell {
-    background: color-mix(in srgb, var(--card-bg) calc(100% * var(--glass-control-scale)), transparent);
+    background: color-mix(in srgb, var(--card-bg) var(--glass-frosted-fill, calc(100% * var(--glass-control-scale))), transparent);
     border-color: var(--warm-gray);
 }
 
@@ -1855,7 +1857,7 @@ body.group-dragging .group-nav-button {
 .mission-card {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 68% * var(--glass-surface-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc(var(--custom-surface-opacity) + 68% * var(--glass-surface-scale))),
         transparent
     );
     border: 1px solid
@@ -3046,7 +3048,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     border-radius: 8px;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 70% * var(--glass-surface-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc(var(--custom-surface-opacity) + 70% * var(--glass-surface-scale))),
         transparent
     );
     box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow) 58%, transparent);
@@ -3477,7 +3479,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     border-radius: 20px;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     box-shadow: 0 20px 42px
@@ -3572,7 +3574,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale))),
         transparent
     );
     color: var(--ink);
@@ -4339,7 +4341,7 @@ body.entry-animations-enabled .deferred-column .section-header {
     border-radius: 18px;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     box-shadow: 0 20px 38px
@@ -4932,7 +4934,7 @@ body.page-chip-drop-new-group .main-content {
     border-radius: 6px;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     color: var(--ink);
@@ -5313,7 +5315,7 @@ body.page-chip-drop-new-group .main-content {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale)),
+        var(--card-bg) var(--glass-frosted-fill, calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale))),
         transparent
     );
     color: var(--ink);
@@ -5420,7 +5422,7 @@ body.page-chip-drop-new-group .main-content {
     border-radius: 18px;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     box-shadow: 0 20px 42px
@@ -5566,7 +5568,7 @@ body.page-chip-drop-new-group .main-content {
     top: 0;
     background: color-mix(
         in srgb,
-        var(--card-bg) var(--panel-card-opacity),
+        var(--card-bg) var(--glass-frosted-fill, var(--panel-card-opacity)),
         transparent
     );
     z-index: 1;
@@ -5806,12 +5808,29 @@ body.page-chip-drop-new-group .main-content {
     }
 }
 
+/* Filter only surface bounds: Chrome clips backdrop to the existing radius,
+   while overflow remains visible for card controls. No per-row filters or
+   persistent will-change layers; drawer cards reuse the shell's backdrop. */
+.header-search-shell,
+.mission-card,
+.saved-session-card {
+    -webkit-backdrop-filter: var(--glass-content-filter);
+    backdrop-filter: var(--glass-content-filter);
+}
+.deferred-shell .saved-session-card,
+.deferred-shell .mission-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
 /* Readable glass fallback: browsers without backdrop-filter must not lean on
    blur for legibility. The material intensity still shapes opacity, but the
    scrim floor keeps text contrast even when the blur is silently dropped. */
 @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
     :root {
         --glass-blur: 0px !important;
+        --glass-content-filter: none !important;
+        --glass-frosted-fill: initial !important;
         --glass-saturate: 100% !important;
         --glass-surface-scale: 1 !important;
         --glass-control-scale: 1 !important;
