@@ -5956,21 +5956,7 @@ document.addEventListener('click', async (e) => {
 
   if (action === 'select-color-source') {
     const colorSource = actionEl.dataset.source === 'wallpaper' ? 'wallpaper' : 'preset';
-    const wallpaperRuntime = globalThis.TabHarborWallpaperRuntime;
-    // Switching to wallpaper without a cached extraction samples the current
-    // backdrop (image or video poster); a null result keeps the preset.
-    if (colorSource === 'wallpaper' && !(themePreferences && themePreferences.wallpaperTheme) && wallpaperRuntime) {
-      const current = normalizeThemePreferences(themePreferences);
-      const poster = current.backgroundType === 'video'
-        ? current.videoPoster
-        : current.backgroundType === 'image' ? current.customBackground : '';
-      const extracted = poster ? await wallpaperRuntime.extractThemeFromImageDataUrl(poster, current.backgroundType) : null;
-      if (extracted) {
-        await saveThemePreferences({ colorSource, wallpaperTheme: extracted, wallpaperSeedHue: extracted.seedHue });
-        showToast(runtimeT ? runtimeT('toastThemeUpdated') : 'Theme updated');
-        return;
-      }
-    }
+    // Extraction and preference persistence share the ordered save queue.
     await saveThemePreferences({ colorSource });
     showToast(runtimeT ? runtimeT('toastThemeUpdated') : 'Theme updated');
     return;
@@ -7696,10 +7682,8 @@ document.addEventListener('input', async (e) => {
   }
 
   if (e.target.id === 'themeWallpaperSeedRange') {
-    const wallpaperSeedHue = Number(e.target.value);
-    const wallpaperTheme = globalThis.TabHarborWallpaperRuntime?.regenerateWallpaperTheme(
-      themePreferences.wallpaperTheme, wallpaperSeedHue);
-    await saveThemePreferences({ wallpaperSeedHue, ...(wallpaperTheme ? { wallpaperTheme } : {}) });
+    // Regenerate against the cache current when this queued save executes.
+    await saveThemePreferences({ wallpaperSeedHue: Number(e.target.value) });
     return;
   }
 

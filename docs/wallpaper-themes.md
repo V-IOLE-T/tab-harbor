@@ -6,7 +6,7 @@ Desk settings → Appearance keeps the existing Paper, Sage, Mist and Blush pale
 
 Choose None, Image or Video. Uploading an image selects Image; uploading a video selects Video only after decoding and durable local storage succeed. Switching away from an image keeps it available for later use.
 
-Choose the preset color source to use the original palettes, or wallpaper colors to generate coordinated light and dark colors from the image or video poster. The seed hue slider adjusts that palette; it saves as you move it. With no readable wallpaper, the saved preset remains the fallback.
+Choose the preset color source to use the original palettes, or wallpaper colors to generate coordinated light and dark colors from the image or video poster. Switching between stored images and videos samples the selected source again and resets the seed hue to that source's extracted hue. The seed hue slider adjusts that palette; it saves as you move it. With no readable wallpaper, the saved preset remains the fallback. Clear becomes available immediately after an upload and becomes disabled again when that media is removed.
 
 Color extraction runs locally using the bundled Material Color Utilities quantizer, scoring and HCT implementation. It samples at most 64 × 64 pixels and stores both tone maps. Startup, popup and other open dashboard pages use the same validated cache and glass tokens; the popup does not load a video player or run extraction.
 
@@ -30,7 +30,7 @@ After import, the poster remains visible and a missing-media notice asks you to 
 
 ## 中文使用说明
 
-在「桌面设置 → 外观」里分别选择背景、颜色来源和材质。图片上传后自动选择图片背景；视频在解码和本地保存成功后才启用。原有主题、明暗/系统模式和快捷链接设置保持可用。选择壁纸取色后，种子色相滑杆可调整配色；磨砂、清透材质的强度滑杆也会边拖边保存。壁纸取色完全在本地运行，首屏、弹出页和多个工作台共用缓存配色。
+在「桌面设置 → 外观」里分别选择背景、颜色来源和材质。图片上传后自动选择图片背景；视频在解码和本地保存成功后才启用。原有主题、明暗/系统模式和快捷链接设置保持可用。选择壁纸取色后，种子色相滑杆可调整配色；切换已保存的图片和视频时会重新提取对应配色，并重置到该背景的提取色相。上传后即可清除对应媒体，无需刷新。磨砂、清透材质的强度滑杆也会边拖边保存。壁纸取色完全在本地运行，首屏、弹出页和多个工作台共用缓存配色。
 
 视频上限为 60 MiB、120 秒、最长边 3840 像素，能否播放还取决于浏览器解码器。视频静音循环，页面隐藏时暂停；系统要求减少动态效果时只显示海报。解码或保存失败会保留原来的媒体。
 
@@ -50,7 +50,7 @@ The five modules have direct tests covering material math/cache validation, real
 node tools/verify-wallpaper-browser.mjs
 ```
 
-This requires Node with built-in WebSocket support (Node 22+), `google-chrome` with CDP `Extensions.loadUnpacked` support and `ffmpeg` with libvpx. Set `CHROME_BIN` to override the browser executable. It covers actual upload and IDB reload, preference-write failure, both sliders, local Monet, light/dark and multi-page/popup synchronization, reduced motion, backup isolation and image upload, and fails on runtime exceptions. Player hidden-state behavior and transaction quota-abort behavior are also tested with deterministic event-driven doubles; the gate does not simulate an OS disk-full condition or every supported video codec.
+This requires Node with built-in WebSocket support (Node 22+), `google-chrome` with CDP `Extensions.loadUnpacked` support and `ffmpeg` with libvpx. Set `CHROME_BIN` to override the browser executable. It covers actual upload, immediate Clear availability and clearing, image/video palette switching, IDB reload, preference-write failure, both sliders, local Monet, light/dark and multi-page/popup synchronization, reduced motion and backup isolation, and fails on runtime exceptions. Player hidden-state behavior and transaction quota-abort behavior are also tested with deterministic event-driven doubles; the gate does not simulate an OS disk-full condition or every supported video codec.
 
 The vendored dependency is **@material/material-color-utilities 0.4.0**, under **Apache-2.0**. The package tarball's SHA-512 is pinned in the build script; esbuild is pinned to **0.25.0**. Upstream legal comments remain in the generated bundle and the complete upstream license ships beside it. Rebuild and verify both files byte-for-byte:
 

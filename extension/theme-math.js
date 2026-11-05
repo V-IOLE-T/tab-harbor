@@ -76,7 +76,11 @@
       source: input.source === 'video' ? 'video' : 'image',
       sourceHash: typeof input.sourceHash === 'string' ? input.sourceHash : '',
       light: Object.fromEntries(WALLPAPER_TOKEN_NAMES.map(name => [name, input.light[name]])),
-      dark: Object.fromEntries(WALLPAPER_TOKEN_NAMES.map(name => [name, input.dark[name]])),
+      // v1 caches originally used a light label on the light dark-mode
+      // accent. Repair that token at every read, including popup/first paint,
+      // without discarding the user's extracted colors or adjusted seed.
+      dark: { ...Object.fromEntries(WALLPAPER_TOKEN_NAMES.map(name => [name, input.dark[name]])),
+        '--workspace-accent-contrast': input.dark['--paper'] },
       updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
     };
   }

@@ -603,6 +603,11 @@ function syncThemeMenuWallpaperControls(panel) {
   }
   if (intensityValue) intensityValue.textContent = `${normalized.materialIntensity}%`;
 
+  const clearImageButton = panel.querySelector('[data-action="clear-custom-background"]');
+  if (clearImageButton) clearImageButton.disabled = !normalized.customBackground;
+  const clearVideoButton = panel.querySelector('[data-action="clear-video-wallpaper"]');
+  if (clearVideoButton) clearVideoButton.disabled = !(normalized.videoPoster || normalized.videoMeta);
+
   const playbackButton = panel.querySelector('[data-action="toggle-video-playback"]');
   if (playbackButton) {
     const isPaused = normalized.videoPlayback === 'paused';
@@ -2243,7 +2248,22 @@ function saveThemePreferences(nextPreferences) {
   // sliders must preserve each other's fields and commit in event order.
   const patch = { ...nextPreferences };
   const save = themePreferenceSaveQueue.then(async () => {
-    const next = normalizeThemePreferences({ ...themePreferences, ...patch });
+    let next = normalizeThemePreferences({ ...themePreferences, ...patch });
+    const sourceChanged = next.backgroundType !== themePreferences.backgroundType;
+    const enablingWallpaperColors = patch.colorSource === 'wallpaper' && !next.wallpaperTheme;
+    // Extract inside the save queue so a slow image decode cannot overtake a
+    // later background switch. Uploads already supply their matching cache.
+    if (!Object.hasOwn(patch, 'wallpaperTheme') && (sourceChanged || enablingWallpaperColors)
+      && (next.backgroundType === 'image' || next.backgroundType === 'video')) {
+      const poster = next.backgroundType === 'video' ? next.videoPoster : next.customBackground;
+      const wallpaperTheme = await globalThis.TabHarborWallpaperRuntime?.extractThemeFromImageDataUrl(poster, next.backgroundType) || null;
+      next = normalizeThemePreferences({ ...next, wallpaperTheme, wallpaperSeedHue: wallpaperTheme?.seedHue ?? null });
+    }
+    if (Object.hasOwn(patch, 'wallpaperSeedHue') && !Object.hasOwn(patch, 'wallpaperTheme')) {
+      const wallpaperTheme = globalThis.TabHarborWallpaperRuntime?.regenerateWallpaperTheme(
+        next.wallpaperTheme, next.wallpaperSeedHue);
+      if (wallpaperTheme) next = normalizeThemePreferences({ ...next, wallpaperTheme });
+    }
     await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: next });
     themePreferences = next;
     syncSystemThemeSubscription();

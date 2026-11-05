@@ -106,7 +106,7 @@
       '--workspace-accent': hctHex(h, aC, 68),
       '--workspace-accent-soft': hctHex(h, aC * 0.3, 22),
       '--workspace-accent-border': hctHex(h, aC * 0.45, 38),
-      '--workspace-accent-contrast': hctHex(h, nC, 95),
+      '--workspace-accent-contrast': hctHex(h, nC + 2, 13),
       '--status-active': hctHex(150, 32, 62),
       '--status-cooling': hctHex(80, 40, 66),
       '--status-abandoned': hctHex(25, 38, 64),
