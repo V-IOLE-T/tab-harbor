@@ -573,7 +573,8 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.theme-range\s*\{/);
   assert.match(css, /\.theme-option\.is-active\s*\{/);
   assert.match(css, /\.header-theme-trigger\s*\{[\s\S]*background:\s*transparent;/);
-  assert.match(themeJs, /body\.style\.backgroundImage = `linear-gradient/);
+  assert.match(themeJs, /body\.style\.backgroundImage = `url/);
+  assert.doesNotMatch(themeJs, /body\.style\.backgroundImage = `linear-gradient/);
   assert.match(themeJs, /body\.classList\.add\('has-custom-background'\)/);
   assert.match(themeJs, /body\.classList\.remove\('has-custom-background'\)/);
   assert.match(themeJs, /hexToRgbChannels/);
@@ -654,7 +655,7 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(themeJs, /'--workspace-accent-soft':/);
   assert.match(themeJs, /'--workspace-accent-border':/);
   assert.match(themeJs, /'--workspace-accent-contrast':/);
-  assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+calc\(var\(--custom-surface-opacity\)\s*\+\s*68%\),\s*transparent\s*\);/);
+  assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+calc\(var\(--custom-surface-opacity\)\s*\+\s*68%\s*\*\s*var\(--glass-surface-scale\)\),\s*transparent\s*\);/);
   assert.match(css, /\.section-count\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);
   assert.match(css, /\.group-nav-button\s*\{[\s\S]*width:\s*40px;[\s\S]*height:\s*40px;/);
   assert.match(css, /\.group-nav-button::after\s*\{[\s\S]*background:\s*var\(--tooltip-surface\);[\s\S]*color:\s*var\(--tooltip-text\);[\s\S]*border:\s*1px solid var\(--tooltip-border\);/);
@@ -663,13 +664,13 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.tab-cleanup-btn\s*\{[\s\S]*border-radius:\s*999px;/);
   assert.match(css, /\.tab-cleanup-btn:hover\s*\{[\s\S]*background:\s*var\(--banner-action-bg-hover\);/);
   assert.match(css, /\.duplicate-count-action\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
-  assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--workspace-chip-bg\)\s+92%,\s*var\(--card-bg\)\s+8%\s*\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
+  assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(in srgb, color-mix\(\s*in\s+srgb,\s*var\(--workspace-chip-bg\)\s+92%,\s*var\(--card-bg\)\s+8%\s*\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
   assert.match(css, /\.action-btn\.close-tabs:hover\s*\{[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border-color:\s*var\(--workspace-accent-border\);/);
   assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--panel-card-opacity\),\s*transparent\s*\);/);
-  assert.match(css, /--tooltip-surface:\s*color-mix\(\s*in\s+srgb,\s*var\(--workspace-accent-soft\)\s+32%,\s*var\(--card-bg\)\s+68%\s*\);/);
+  assert.match(css, /--tooltip-surface:\s*color-mix\(in srgb, color-mix\(\s*in\s+srgb,\s*var\(--workspace-accent-soft\)\s+32%,\s*var\(--card-bg\)\s+68%\s*\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);/);
   assert.match(css, /\.drawer-title-btn\.is-active,\s*\.drawer-title-btn\[aria-selected="true"\]\s*\{[\s\S]*text-decoration-color:\s*var\(--drawer-tab-underline-active\);/);
   assert.match(css, /\.archive-clear-btn\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);
-  assert.match(css, /\.todo-detail-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+96%,\s*var\(--paper\)\s+4%\s*\);/);
+  assert.match(css, /\.todo-detail-card\s*\{[\s\S]*background:\s*color-mix\(in srgb, color-mix\(in srgb, var\(--card-bg\) 96%, var\(--paper\) 4%\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);/);
   // Image handling anchors: the compress path is kept and the legacy
   // readFileAsDataUrl path must stay gone.
   assert.match(appJs, /compressImageFileForStorage/);

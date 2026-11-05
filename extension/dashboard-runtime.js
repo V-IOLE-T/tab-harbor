@@ -5101,6 +5101,13 @@ function renderWorkspaceThemeTools() {
               </div>
             </div>
           </div>
+          <div class="theme-menu-section">
+            <div class="theme-menu-row theme-menu-row-inline-range">
+              <label class="theme-menu-label" for="themeWallpaperOverlayRange">${runtimeT ? runtimeT('wallpaperOverlayLabel') : 'Wallpaper overlay'}</label>
+              <input class="theme-range" id="themeWallpaperOverlayRange" type="range" min="0" max="100" step="1" value="${wallpaperPrefs.wallpaperOverlay}">
+              <div class="theme-range-value" id="themeWallpaperOverlayValue">${wallpaperPrefs.wallpaperOverlay}%</div>
+            </div>
+          </div>
           <div class="theme-menu-section" data-wallpaper-when="image"${activeBackgroundType === 'image' ? '' : ' style="display:none"'}>
             <div class="theme-menu-label">${runtimeT ? runtimeT('deskBackdrop') : 'Desk backdrop'}</div>
             <div class="theme-menu-actions">
@@ -7684,6 +7691,11 @@ document.addEventListener('input', async (e) => {
   if (e.target.id === 'themeWallpaperSeedRange') {
     // Regenerate against the cache current when this queued save executes.
     await saveThemePreferences({ wallpaperSeedHue: Number(e.target.value) });
+    return;
+  }
+
+  if (e.target.id === 'themeWallpaperOverlayRange') {
+    await saveThemePreferences({ wallpaperOverlay: Number(e.target.value) });
     return;
   }
 

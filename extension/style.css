@@ -50,9 +50,13 @@
     --glass-blur: 10px;
     --glass-saturate: 100%;
     --glass-surface-scale: 1;
+    --glass-control-scale: 1;
     --glass-floating-min: 82%;
     --glass-panel-min: 74%;
     --glass-scrim-opacity: 0;
+    --wallpaper-overlay-opacity: 0;
+    --wallpaper-overlay-paper-share: 0%;
+    --control-surface-opacity: 14%;
     --ui-scale: 1;
     --shortcut-scale: 1;
     --ui-font-8: 8px;
@@ -76,11 +80,11 @@
     --quick-shortcut-icon-wrap-size: 40px;
     --quick-shortcut-icon-size: 22px;
     --quick-shortcut-label-size: 11px;
-    /* User surface/border/badge intensity inputs (0-100) feed the derived
-       floating/panel opacity values below via clamp(). */
+    /* Clear scales both the minimum and the added fill. Scaling only the
+       depth leaves menus opaque; scaling element opacity would fade text. */
     --floating-surface-opacity: clamp(
         var(--glass-floating-min),
-        calc(var(--custom-surface-opacity) + 54%),
+        calc(var(--custom-surface-opacity) + 54% * var(--glass-control-scale)),
         94%
     );
     --floating-border-opacity: clamp(
@@ -88,22 +92,22 @@
         calc(var(--custom-border-opacity) + 18%),
         64%
     );
-    --panel-surface-opacity: min(98%, calc(var(--glass-panel-min) + 18%));
+    --panel-surface-opacity: min(98%, calc(var(--glass-panel-min) + 18% * var(--glass-control-scale)));
     --panel-card-opacity: clamp(
         var(--glass-panel-min),
-        calc(var(--custom-surface-opacity) + 48%),
+        calc(var(--custom-surface-opacity) + 48% * var(--glass-control-scale)),
         94%
     );
-    --drawer-trigger-surface: color-mix(
+    --drawer-trigger-surface: color-mix(in srgb, color-mix(
         in srgb,
         var(--card-bg) 94%,
         var(--paper) 6%
-    );
-    --drawer-trigger-surface-hover: color-mix(
+    ) calc(100% * var(--glass-control-scale)), transparent);
+    --drawer-trigger-surface-hover: color-mix(in srgb, color-mix(
         in srgb,
         var(--card-bg) 88%,
         var(--workspace-accent-soft) 12%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     --drawer-trigger-border: color-mix(
         in srgb,
         var(--warm-gray) 64%,
@@ -115,11 +119,11 @@
         var(--workspace-accent-border) 64%
     );
     --drawer-trigger-icon: color-mix(in srgb, var(--ink) 78%, var(--muted) 22%);
-    --tooltip-surface: color-mix(
+    --tooltip-surface: color-mix(in srgb, color-mix(
         in srgb,
         var(--workspace-accent-soft) 32%,
         var(--card-bg) 68%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     --tooltip-border: color-mix(
         in srgb,
         var(--workspace-accent-border) 72%,
@@ -199,6 +203,7 @@ body {
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     position: relative;
+    isolation: isolate;
 }
 
 /* Subtle paper texture */
@@ -206,7 +211,7 @@ body::before {
     content: "";
     position: fixed;
     inset: 0;
-    background-color: rgb(0 0 0 / var(--glass-scrim-opacity));
+    background-color: transparent;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
     pointer-events: none;
     z-index: 1;
@@ -216,12 +221,27 @@ body.theme-tone-dark::before {
     opacity: 0.5;
 }
 
+/* One dimming layer for both media types; texture stays independent. */
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--paper) var(--wallpaper-overlay-paper-share), black);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+body.has-custom-background::after,
+body.has-video-wallpaper::after {
+    opacity: var(--wallpaper-overlay-opacity);
+}
+
 /* Fixed wallpaper layer (video + poster fallback). Sits behind the paper
    texture and the content column; the player fills it edge-to-edge. */
 .wallpaper-layer {
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: -1;
     overflow: hidden;
     pointer-events: none;
     background-size: cover;
@@ -369,7 +389,7 @@ body.theme-tone-dark::before {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 74%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale)),
         transparent
     );
     box-shadow: 0 10px 22px
@@ -386,8 +406,8 @@ body.theme-tone-dark::before {
         color-mix(in srgb, var(--workspace-accent) 14%, transparent);
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 78%),
-        var(--workspace-accent-soft) 4%
+        var(--card-bg) calc((var(--control-surface-opacity) + 78%) * var(--glass-control-scale)),
+        var(--workspace-accent-soft) calc(4% * var(--glass-control-scale))
     );
 }
 
@@ -627,8 +647,8 @@ body.theme-tone-dark::before {
     border-radius: 999px;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 82%),
-        var(--paper) 18%
+        var(--card-bg) calc((var(--control-surface-opacity) + 82%) * var(--glass-control-scale)),
+        var(--paper) calc(18% * var(--glass-control-scale))
     );
     color: var(--muted);
     display: inline-flex;
@@ -662,8 +682,8 @@ body.theme-tone-dark::before {
     border-radius: 999px;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 82%),
-        var(--paper) 18%
+        var(--card-bg) calc((var(--control-surface-opacity) + 82%) * var(--glass-control-scale)),
+        var(--paper) calc(18% * var(--glass-control-scale))
     );
     color: var(--muted);
     display: inline-flex;
@@ -698,11 +718,11 @@ body.theme-tone-dark::before {
         var(--workspace-accent-border) 38%,
         transparent
     );
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--workspace-accent-soft) 58%,
         var(--card-bg) 42%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     color: color-mix(in srgb, var(--workspace-chip-text) 90%, var(--ink) 10%);
     box-shadow: 0 7px 14px
         color-mix(in srgb, var(--workspace-accent) 12%, transparent);
@@ -717,11 +737,11 @@ body.theme-tone-dark::before {
 .quick-shortcut-remove:hover,
 .quick-shortcut-remove:focus-visible {
     border-color: color-mix(in srgb, var(--status-abandoned) 24%, transparent);
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--status-abandoned) 12%,
         var(--card-bg) 88%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     color: color-mix(in srgb, var(--status-abandoned) 92%, var(--ink) 8%);
     box-shadow: 0 7px 14px
         color-mix(in srgb, var(--status-abandoned) 14%, transparent);
@@ -749,7 +769,7 @@ body.theme-tone-dark::before {
     border: none;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 24%),
+        var(--card-bg) calc(var(--custom-surface-opacity) + 24% * var(--glass-surface-scale)),
         transparent
     );
     flex-shrink: 0;
@@ -763,7 +783,7 @@ body.theme-tone-dark::before {
 .quick-shortcut-open:focus-visible .quick-shortcut-icon-wrap {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 18%),
+        var(--card-bg) calc(var(--custom-surface-opacity) + 18% * var(--glass-surface-scale)),
         var(--workspace-accent-soft) 14%
     );
     box-shadow: 0 4px 10px
@@ -798,7 +818,7 @@ body.theme-tone-dark::before {
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: var(--theme-accent-soft);
+    background: color-mix(in srgb, var(--theme-accent-soft) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--theme-accent-strong);
     font-size: 10px;
     font-size: calc(var(--quick-shortcut-label-size) * 0.91);
@@ -866,7 +886,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 .quick-shortcut-card.is-drag-ghost .quick-shortcut-icon-wrap {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 22%),
+        var(--card-bg) calc(var(--custom-surface-opacity) + 22% * var(--glass-surface-scale)),
         var(--workspace-accent-soft) 16%
     );
     box-shadow: 0 12px 22px color-mix(in srgb, var(--ink) 10%, transparent);
@@ -1171,7 +1191,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 56%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 56%) * var(--glass-control-scale)),
         transparent
     );
     color: var(--ink);
@@ -1201,7 +1221,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
         var(--accent-amber) 32%,
         var(--warm-gray) 68%
     );
-    background: var(--theme-accent-soft);
+    background: color-mix(in srgb, var(--theme-accent-soft) calc(100% * var(--glass-control-scale)), transparent);
 }
 
 .theme-option-main {
@@ -1266,7 +1286,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 
 .theme-option.is-active .theme-option-check {
     border-color: var(--theme-accent-muted);
-    background: var(--theme-accent-soft);
+    background: color-mix(in srgb, var(--theme-accent-soft) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--theme-accent-strong);
 }
 
@@ -1278,7 +1298,7 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
 body.theme-tone-dark .header-search-shell {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 60%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 60%) * var(--glass-control-scale)),
         transparent
     );
     border-color: color-mix(
@@ -1291,18 +1311,18 @@ body.theme-tone-dark .header-search-shell {
 body.theme-tone-dark .quick-shortcut-icon-wrap {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 18%),
+        var(--card-bg) calc(var(--custom-surface-opacity) + 18% * var(--glass-surface-scale)),
         transparent
     );
 }
 
 body.theme-tone-dark .theme-menu {
-    background: var(--card-bg);
+    background: color-mix(in srgb, var(--card-bg) calc(100% * var(--glass-control-scale)), transparent);
     border-color: var(--warm-gray);
 }
 
 body.theme-tone-dark .deferred-shell {
-    background: var(--card-bg);
+    background: color-mix(in srgb, var(--card-bg) calc(100% * var(--glass-control-scale)), transparent);
     border-color: var(--warm-gray);
 }
 
@@ -1315,7 +1335,7 @@ body.theme-tone-dark .deferred-shell {
     border: none;
     background: color-mix(
         in srgb,
-        var(--workspace-accent-soft) 26%,
+        var(--workspace-accent-soft) calc(26% * var(--glass-control-scale)),
         transparent
     );
     color: var(--ink);
@@ -1333,7 +1353,7 @@ body.theme-tone-dark .deferred-shell {
 }
 
 .theme-menu-action:hover {
-    background: var(--theme-accent-soft);
+    background: color-mix(in srgb, var(--theme-accent-soft) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--theme-accent-strong);
 }
 
@@ -1345,7 +1365,7 @@ body.theme-tone-dark .deferred-shell {
 .theme-menu-action.is-secondary:hover {
     background: color-mix(
         in srgb,
-        var(--workspace-accent-soft) 18%,
+        var(--workspace-accent-soft) calc(18% * var(--glass-control-scale)),
         transparent
     );
     color: var(--ink);
@@ -1399,7 +1419,7 @@ body.theme-tone-dark .deferred-shell {
     width: 16px;
     height: 16px;
     border-radius: 999px;
-    background: var(--card-bg);
+    background: color-mix(in srgb, var(--card-bg) calc(100% * var(--glass-control-scale)), transparent);
     transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
     box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 20%, transparent);
 }
@@ -1506,7 +1526,7 @@ body.theme-tone-dark .deferred-shell {
     width: 16px;
     height: 16px;
     border-radius: 999px;
-    background: var(--card-bg);
+    background: color-mix(in srgb, var(--card-bg) calc(100% * var(--glass-control-scale)), transparent);
     transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
     box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 20%, transparent);
 }
@@ -1520,11 +1540,11 @@ body.theme-tone-dark .deferred-shell {
 }
 
 .tab-cleanup-banner {
-    background: linear-gradient(
+    background: color-mix(in srgb, linear-gradient(
         135deg,
         color-mix(in srgb, var(--theme-accent-soft) 56%, var(--card-bg) 44%),
         color-mix(in srgb, var(--theme-accent-soft) 86%, var(--card-bg) 14%)
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     border: 1px solid var(--theme-accent-muted);
     border-radius: 999px;
     padding: 2px 4px;
@@ -1724,7 +1744,7 @@ body.theme-tone-dark .deferred-shell {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 64%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 64%) * var(--glass-control-scale)),
         transparent
     );
     display: inline-flex;
@@ -1835,7 +1855,7 @@ body.group-dragging .group-nav-button {
 .mission-card {
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 68%),
+        var(--card-bg) calc(var(--custom-surface-opacity) + 68% * var(--glass-surface-scale)),
         transparent
     );
     border: 1px solid
@@ -2025,11 +2045,11 @@ body.group-dragging .group-nav-button {
     border-radius: 8px;
     border: 1px solid
         color-mix(in srgb, var(--workspace-chip-border) 72%, var(--ink) 28%);
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--card-bg) 94%,
         var(--theme-accent-soft) 6%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--ink);
     font:
         600 15px/1.2 "Public Sans",
@@ -2557,7 +2577,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 66%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 66%) * var(--glass-control-scale)),
         transparent
     );
     color: color-mix(in srgb, var(--ink) 70%, var(--muted) 30%);
@@ -2592,11 +2612,11 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
 .action-btn.close-tabs {
     border-color: var(--workspace-chip-border);
     color: var(--workspace-chip-text);
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--workspace-chip-bg) 92%,
         var(--card-bg) 8%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     border-radius: 8px;
     min-height: 28px;
     padding: 4px 10px;
@@ -2827,7 +2847,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     margin: 0;
     border: 1px solid color-mix(in srgb, var(--muted) 62%, var(--warm-gray) 38%);
     border-radius: 4px;
-    background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 92%, transparent) calc(100% * var(--glass-control-scale)), transparent);
     cursor: pointer;
     position: relative;
 }
@@ -2850,7 +2870,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
 }
 
 .session-picker input[type="checkbox"]:indeterminate {
-    background: color-mix(in srgb, var(--accent-sage) 72%, var(--card-bg) 28%);
+    background: color-mix(in srgb, color-mix(in srgb, var(--accent-sage) 72%, var(--card-bg) 28%) calc(100% * var(--glass-control-scale)), transparent);
     border-color: var(--accent-sage);
 }
 
@@ -2912,7 +2932,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     padding: 11px 18px;
     border-top: 1px solid
         color-mix(in srgb, var(--workspace-accent-border) 20%, transparent);
-    background: color-mix(in srgb, var(--card-bg) 74%, var(--paper) 26%);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 74%, var(--paper) 26%) calc(100% * var(--glass-control-scale)), transparent);
 }
 
 .session-picker-count {
@@ -2946,7 +2966,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
 
 .session-picker-mode-button:hover:not(:disabled),
 .session-picker-mode-button.is-active {
-    background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 92%, transparent) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--ink);
 }
 
@@ -2962,7 +2982,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     max-width: 220px;
     border: 1px solid color-mix(in srgb, var(--warm-gray) 66%, transparent);
     border-radius: 8px;
-    background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 88%, transparent) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--ink);
     font-family: "Public Sans", sans-serif;
     font-size: var(--ui-font-12);
@@ -3026,7 +3046,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     border-radius: 8px;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 70%),
+        var(--card-bg) calc(var(--custom-surface-opacity) + 70% * var(--glass-surface-scale)),
         transparent
     );
     box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow) 58%, transparent);
@@ -3110,7 +3130,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
             var(--warm-gray) 72%
         );
     border-radius: 10px;
-    background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 92%, transparent) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--ink);
     padding: 0 10px;
     font-family: "Public Sans", sans-serif;
@@ -3133,7 +3153,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
             var(--warm-gray) 72%
         );
     border-radius: 10px;
-    background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 92%, transparent) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--ink);
     padding: 0 10px;
     font-family: "Public Sans", sans-serif;
@@ -3265,7 +3285,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     width: var(--drag-width, auto);
     z-index: 120;
     pointer-events: none;
-    background: color-mix(in srgb, var(--card-bg) 94%, var(--paper) 6%);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 94%, var(--paper) 6%) calc(100% * var(--glass-control-scale)), transparent);
     box-shadow: 0 12px 24px color-mix(in srgb, var(--ink) 10%, transparent);
     border-radius: 8px;
     border-bottom: none;
@@ -3552,7 +3572,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 74%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale)),
         transparent
     );
     color: var(--ink);
@@ -3601,7 +3621,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     border-radius: 12px;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 70%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 70%) * var(--glass-control-scale)),
         transparent
     );
     flex: 1 1 auto;
@@ -3635,11 +3655,11 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
 
 .shortcut-editor-source-chip[aria-pressed="true"] {
     color: var(--workspace-chip-text);
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--workspace-chip-bg) 88%,
         var(--card-bg) 12%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
 }
 
 .shortcut-editor-mode-group[hidden] {
@@ -3694,7 +3714,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 66%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 66%) * var(--glass-control-scale)),
         transparent
     );
     display: inline-flex;
@@ -3724,7 +3744,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: var(--theme-accent-soft);
+    background: color-mix(in srgb, var(--theme-accent-soft) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--theme-accent-strong);
     font-size: 11px;
     font-weight: 700;
@@ -3747,7 +3767,7 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     border-radius: 999px;
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 72%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 72%) * var(--glass-control-scale)),
         transparent
     );
     display: inline-flex;
@@ -4253,11 +4273,11 @@ body.entry-animations-enabled .deferred-column .section-header {
 }
 
 .deferred-trigger[aria-expanded="true"] {
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--card-bg) 86%,
         var(--workspace-accent-soft) 14%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     border-color: var(--drawer-trigger-border-hover);
     box-shadow: 0 18px 30px
         color-mix(in srgb, var(--workspace-accent) 18%, transparent);
@@ -5247,7 +5267,7 @@ body.page-chip-drop-new-group .main-content {
             var(--warm-gray) 78%
         );
     border-radius: 12px;
-    background: color-mix(in srgb, var(--card-bg) 94%, var(--paper) 6%);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 94%, var(--paper) 6%) calc(100% * var(--glass-control-scale)), transparent);
     padding: 14px;
 }
 
@@ -5293,7 +5313,7 @@ body.page-chip-drop-new-group .main-content {
         );
     background: color-mix(
         in srgb,
-        var(--card-bg) calc(var(--custom-surface-opacity) + 74%),
+        var(--card-bg) calc((var(--control-surface-opacity) + 74%) * var(--glass-control-scale)),
         transparent
     );
     color: var(--ink);
@@ -5345,7 +5365,7 @@ body.page-chip-drop-new-group .main-content {
 .todo-detail-card {
     border: 1px solid rgba(154, 145, 138, 0.12);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--card-bg) 96%, var(--paper) 4%);
+    background: color-mix(in srgb, color-mix(in srgb, var(--card-bg) 96%, var(--paper) 4%) calc(100% * var(--glass-control-scale)), transparent);
     padding: 16px;
 }
 
@@ -5626,7 +5646,7 @@ body.page-chip-drop-new-group .main-content {
     width: 16px;
     height: 16px;
     border-radius: 999px;
-    background: var(--theme-accent-soft);
+    background: color-mix(in srgb, var(--theme-accent-soft) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--theme-accent-strong);
     font-size: 8px;
     font-weight: 700;
@@ -5651,11 +5671,11 @@ body.page-chip-drop-new-group .main-content {
     height: 24px;
     border: none;
     border-radius: 999px;
-    background: color-mix(
+    background: color-mix(in srgb, color-mix(
         in srgb,
         var(--workspace-accent-soft) 56%,
         var(--card-bg) 44%
-    );
+    ) calc(100% * var(--glass-control-scale)), transparent);
     color: var(--workspace-chip-text);
     display: inline-flex;
     align-items: center;
@@ -5794,8 +5814,9 @@ body.page-chip-drop-new-group .main-content {
         --glass-blur: 0px !important;
         --glass-saturate: 100% !important;
         --glass-surface-scale: 1 !important;
+        --glass-control-scale: 1 !important;
         --glass-floating-min: 92% !important;
         --glass-panel-min: 88% !important;
-        --glass-scrim-opacity: 0.07 !important;
+        /* Dimming remains user-controlled without backdrop-filter. */
     }
 }

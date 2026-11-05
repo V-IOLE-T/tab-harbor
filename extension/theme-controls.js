@@ -104,6 +104,7 @@ let themePreferences = {
   wallpaperTheme: null,
   material: 'default',
   materialIntensity: 50,
+  wallpaperOverlay: 26,
   backgroundType: 'none',
   customBackground: '',
   videoPoster: '',
@@ -185,6 +186,8 @@ function normalizeThemePreferences(input) {
   const materialIntensity = themeMath.normalizeMaterialIntensity
     ? themeMath.normalizeMaterialIntensity(next.materialIntensity)
     : (Number.isFinite(rawMaterialIntensity) ? Math.min(100, Math.max(0, Math.round(rawMaterialIntensity))) : 50);
+  const overlayMode = VALID_THEME_MODES.has(rawMode) ? rawMode : 'system';
+  const overlayMigration = { ...next, mode: overlayMode === 'system' ? getSystemThemeMode() : overlayMode };
   const rawVideoPlayback = String(next.videoPlayback || 'playing');
   const wallpaperTheme = themeMath.normalizeWallpaperThemeCache
     ? themeMath.normalizeWallpaperThemeCache(next.wallpaperTheme)
@@ -197,6 +200,8 @@ function normalizeThemePreferences(input) {
     wallpaperTheme,
     material,
     materialIntensity,
+    wallpaperOverlay: themeMath.normalizeWallpaperOverlay(overlayMigration),
+    wallpaperOverlayTint: themeMath.normalizeWallpaperOverlayTint(overlayMigration),
     backgroundType,
     // The image data URL is kept even when another wallpaper type is active,
     // so switching back to "image" never requires a re-upload.
@@ -453,7 +458,7 @@ function computeThemeMaterialVars(preferences = themePreferences) {
   for (const [name, value] of Object.entries(vars)) {
     if (name.startsWith('--')) result[name] = value;
   }
-  return result;
+  return { ...result, ...themeMath.computeWallpaperOverlayVars(preferences) };
 }
 
 function computeThemeSizeVars({ uiScale = 100, shortcutScale = 100 } = {}) {
@@ -496,6 +501,7 @@ function applyThemePreferences() {
   const normalized = normalizeThemePreferences(themePreferences);
   const theme = getResolvedThemeDefinition(normalized);
   const materialVars = themeMath.computeMaterialVars ? themeMath.computeMaterialVars(normalized) : null;
+  Object.entries(themeMath.computeWallpaperOverlayVars(normalized)).forEach(([name, value]) => root.style.setProperty(name, value));
   const opacityVars = computeThemeOpacityVars(normalized.surfaceOpacity, materialVars);
   const sizeVars = computeThemeSizeVars(normalized);
 
@@ -529,8 +535,7 @@ function applyThemePreferences() {
   if (isImage) {
     root.style.setProperty('--page-custom-background', `url("${normalized.customBackground}")`);
     if (body) {
-      const paperRgb = hexToRgbChannels(theme.vars['--paper']);
-      body.style.backgroundImage = `linear-gradient(rgba(${paperRgb} / 0.26), rgba(${paperRgb} / 0.26)), url("${normalized.customBackground}")`;
+      body.style.backgroundImage = `url("${normalized.customBackground}")`;
       body.classList.add('has-custom-background');
     }
   } else {
@@ -602,6 +607,11 @@ function syncThemeMenuWallpaperControls(panel) {
     intensityRange.value = String(normalized.materialIntensity);
   }
   if (intensityValue) intensityValue.textContent = `${normalized.materialIntensity}%`;
+
+  const overlayRange = panel.querySelector('#themeWallpaperOverlayRange');
+  const overlayValue = panel.querySelector('#themeWallpaperOverlayValue');
+  if (overlayRange && document.activeElement !== overlayRange) overlayRange.value = String(normalized.wallpaperOverlay);
+  if (overlayValue) overlayValue.textContent = `${normalized.wallpaperOverlay}%`;
 
   const clearImageButton = panel.querySelector('[data-action="clear-custom-background"]');
   if (clearImageButton) clearImageButton.disabled = !normalized.customBackground;

@@ -89,3 +89,18 @@ test('missing video recovery is static and never manufactures local blob URLs', 
   assert.deepEqual(videoApi.buildMissingVideoRecovery({ backgroundType: 'video' }), { backgroundType: 'none' });
   assert.equal(videoApi.buildMissingVideoRecovery({ backgroundType: 'image' }), null);
 });
+
+
+test('clearing a video removes and hides its poster before an image can paint', () => {
+  const {player,videos,layer}=playerEnv();
+  player.setSource(new Blob(['media']),'data:image/webp;base64,AA==');
+  assert.ok(videos[0].poster);
+  player.setSource(null);
+  assert.equal(videos[0].poster,'');
+  assert.equal(videos[0].style.display,'none');
+  assert.equal(layer.style.backgroundImage,'');
+  player.setReducedMotion(false);
+  assert.equal(videos[0].style.display,'none');
+  player.setSource(new Blob(['replacement']),'data:image/webp;base64,BB==');
+  assert.equal(videos[0].style.display,'');
+});

@@ -52,6 +52,43 @@
     return Math.round(clampNumber(input, 0, 100, DEFAULT_MATERIAL_INTENSITY));
   }
 
+  // Missing overlay values are from the old image wash + material scrim.
+  // Fold both into one opacity once; explicit values never depend on glass.
+  function normalizeWallpaperOverlay(input = {}) {
+    const value = input.wallpaperOverlay;
+    if (value !== undefined && value !== null && value !== '' && Number.isFinite(Number(value))) {
+      return Math.round(clampNumber(value, 0, 100, 26));
+    }
+    const intensity = normalizeMaterialIntensity(input.materialIntensity);
+    const scrim = input.material === 'clear' ? 0.1 + intensity * 0.004
+      : input.material === 'frosted' ? 0.05 + intensity * 0.001 : 0;
+    const image = input.backgroundType === 'image' || (!input.backgroundType && input.customBackground);
+    const toneScale = input.mode === 'dark' ? 0.5 : 1;
+    return Math.round(100 * (image ? 0.26 + scrim * toneScale * 0.74 : scrim * toneScale));
+  }
+
+  function normalizeWallpaperOverlayTint(input = {}) {
+    if (Number.isFinite(Number(input.wallpaperOverlayTint)) && input.wallpaperOverlayTint != null) {
+      return clampNumber(input.wallpaperOverlayTint, 0, 100, 0);
+    }
+    // Preserve the old image's paper wash as a single composite tint. Once
+    // persisted, this tint and the overlay opacity are independent of material.
+    const legacyImage = input.wallpaperOverlay == null && (input.backgroundType === 'image'
+      || (!input.backgroundType && input.customBackground));
+    if (!legacyImage) return 0;
+    const intensity = normalizeMaterialIntensity(input.materialIntensity);
+    const scrim = (input.material === 'clear' ? 0.1 + intensity * 0.004
+      : input.material === 'frosted' ? 0.05 + intensity * 0.001 : 0) * (input.mode === 'dark' ? 0.5 : 1);
+    return Number((100 * 0.26 * (1 - scrim) / (0.26 + scrim * 0.74)).toFixed(3));
+  }
+
+  function computeWallpaperOverlayVars(input = {}) {
+    return {
+      '--wallpaper-overlay-opacity': String(normalizeWallpaperOverlay(input) / 100),
+      '--wallpaper-overlay-paper-share': `${normalizeWallpaperOverlayTint(input)}%`,
+    };
+  }
+
   // Structural validation for the cached wallpaper theme. Full semantic
   // regeneration lives in monet-theme.js; this guard only decides whether a
   // persisted cache is shaped well enough to paint with. A version mismatch
@@ -99,9 +136,10 @@
         '--glass-blur': `${10 + Math.round(intensity * 0.22)}px`,
         '--glass-saturate': `${100 + Math.round(intensity * 0.5)}%`,
         '--glass-surface-scale': (1 - intensity * 0.002).toFixed(3),
+        '--glass-control-scale': '1',
         '--glass-floating-min': '78%',
         '--glass-panel-min': '70%',
-        '--glass-scrim-opacity': (0.05 + intensity * 0.001).toFixed(3),
+        '--glass-scrim-opacity': '0',
       };
     }
 
@@ -111,10 +149,11 @@
         materialIntensity: intensity,
         '--glass-blur': '0px',
         '--glass-saturate': '100%',
-        '--glass-surface-scale': (1 - intensity * 0.006).toFixed(3),
-        '--glass-floating-min': `${Math.round(78 - intensity * 0.36)}%`,
-        '--glass-panel-min': `${Math.round(74 - intensity * 0.34)}%`,
-        '--glass-scrim-opacity': (0.1 + intensity * 0.004).toFixed(3),
+        '--glass-surface-scale': (1 - intensity * 0.009).toFixed(3),
+        '--glass-control-scale': (1 - intensity * 0.009).toFixed(3),
+        '--glass-floating-min': `${(82 * (1 - intensity * 0.009)).toFixed(3)}%`,
+        '--glass-panel-min': `${(74 * (1 - intensity * 0.009)).toFixed(3)}%`,
+        '--glass-scrim-opacity': '0',
       };
     }
 
@@ -124,6 +163,7 @@
       '--glass-blur': '10px',
       '--glass-saturate': '100%',
       '--glass-surface-scale': '1',
+      '--glass-control-scale': '1',
       '--glass-floating-min': '82%',
       '--glass-panel-min': '74%',
       '--glass-scrim-opacity': '0',
@@ -147,13 +187,10 @@
     const materialVars = materialVarsInput && typeof materialVarsInput === 'object'
       ? materialVarsInput
       : computeMaterialVars();
-    const scale = clampNumber(materialVars['--glass-surface-scale'], 0.2, 1, 1);
-    // A material with no blur cannot rely on backdrop-filter for legibility,
-    // so its surfaces keep a readable opacity floor even at high intensity.
-    const blur = String(materialVars['--glass-blur'] || '10px');
-    const hasBlur = blur !== '0px';
-    const floor = hasBlur ? 2 : 26;
-    const effective = Math.max(floor, Math.round(base * scale));
+    const scale = clampNumber(materialVars['--glass-surface-scale'], 0.1, 1, 1);
+    // Content can be clear without blur. Controls scale their own fills with the same clear strength.
+    const effective = materialVars['--glass-blur'] === '0px'
+      ? Number((base * scale).toFixed(2)) : Math.max(2, Math.round(base * scale));
     return {
       '--custom-surface-opacity': `${effective}%`,
       '--custom-border-opacity': `${Math.max(8, effective)}%`,
@@ -168,6 +205,9 @@
     WALLPAPER_THEME_VERSION,
     WALLPAPER_TOKEN_NAMES,
     computeEffectiveOpacityVars,
+    computeWallpaperOverlayVars,
+    normalizeWallpaperOverlay,
+    normalizeWallpaperOverlayTint,
     computeMaterialGlassVars,
     computeMaterialVars,
     isHexColor,

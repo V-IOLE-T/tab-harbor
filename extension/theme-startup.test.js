@@ -88,6 +88,8 @@ test('early authoritative read migrates legacy themes and refreshes the cache', 
     paletteId: 'mist',
     colorSource: 'preset',
     wallpaperTheme: null,
+    wallpaperOverlay: 0,
+    wallpaperOverlayTint: 0,
   });
 });
 
@@ -122,5 +124,33 @@ test('late startup reads cannot override a runtime theme change', async () => {
     paletteId: 'blush',
     colorSource: 'preset',
     wallpaperTheme: null,
+    wallpaperOverlay: 0,
+    wallpaperOverlayTint: 0,
   });
+});
+
+
+test('clear opacity and independent overlay match shared runtime math before storage resolves', () => {
+  const math = require('./theme-math.js');
+  for (const mode of ['light','dark']) for (const materialIntensity of [0,50,100]) {
+    const prefs = {mode,material:'clear',materialIntensity,surfaceOpacity:14,wallpaperOverlay:39,wallpaperOverlayTint:0};
+    const state = boot({cached:JSON.stringify(prefs)});
+    const expected = {...math.computeMaterialGlassVars(prefs), ...math.computeEffectiveOpacityVars(14,math.computeMaterialVars(prefs)), ...math.computeWallpaperOverlayVars(prefs)};
+    for (const [key,value] of Object.entries(expected)) assert.equal(state.properties[key],value,key);
+    assert.equal(JSON.parse(state.cache()).wallpaperOverlay,39);
+  }
+});
+
+test('legacy image overlay cache retains its migrated tint on the next boot', () => {
+  const state=boot({cached:JSON.stringify({backgroundType:'image',customBackground:'image',material:'clear',materialIntensity:50})});
+  const next=boot({cached:state.cache()});
+  assert.equal(next.properties['--wallpaper-overlay-opacity'],state.properties['--wallpaper-overlay-opacity']);
+  assert.equal(next.properties['--wallpaper-overlay-paper-share'],state.properties['--wallpaper-overlay-paper-share']);
+});
+
+
+test('legacy overlay first paint resolves system dark mode consistently', () => {
+  const state=boot({dark:true,cached:JSON.stringify({mode:'system',backgroundType:'image',material:'clear',materialIntensity:50})});
+  assert.equal(state.properties['--wallpaper-overlay-opacity'],'0.37');
+  assert.equal(JSON.parse(state.cache()).wallpaperOverlay,37);
 });

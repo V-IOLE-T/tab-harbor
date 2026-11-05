@@ -175,7 +175,7 @@
       // Poster stays visible under the video so first paint and error states
       // never flash a bare background.
       if (video) {
-        video.style.display = failed || reducedMotion ? 'none' : '';
+        video.style.display = !objectUrl || failed || reducedMotion ? 'none' : '';
       }
     }
 
@@ -225,6 +225,8 @@
             video.load();
           }
         } else if (video) {
+          video.poster = '';
+          video.removeAttribute('poster');
           video.removeAttribute('src');
           video.load();
         }

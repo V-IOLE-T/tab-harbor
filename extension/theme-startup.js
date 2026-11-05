@@ -21,7 +21,7 @@
   function applyMaterial(preferences) {
     if (!themeMath.computeMaterialVars) return;
     const root = document.documentElement;
-    const materialVars = themeMath.computeMaterialVars(preferences);
+    const materialVars = { ...themeMath.computeMaterialVars(preferences), ...themeMath.computeWallpaperOverlayVars(preferences) };
     Object.entries(materialVars).forEach(([name, value]) => {
       if (name.startsWith('--')) root.style.setProperty(name, value);
     });
@@ -47,7 +47,8 @@
     Object.entries(resolveTokens({ ...next, paletteId }, tone)).forEach(([name, value]) => {
       root.style.setProperty(name, value);
     });
-    applyMaterial(next);
+    const overlayPreferences = { ...next, mode: tone };
+    applyMaterial(overlayPreferences);
     root.style.colorScheme = tone;
     root.style.backgroundColor = 'var(--paper)';
     try {
@@ -59,6 +60,8 @@
         material: next.material,
         materialIntensity: next.materialIntensity,
         surfaceOpacity: next.surfaceOpacity,
+        wallpaperOverlay: themeMath.normalizeWallpaperOverlay(overlayPreferences),
+        wallpaperOverlayTint: themeMath.normalizeWallpaperOverlayTint(overlayPreferences),
       }));
     } catch { /* Theme rendering must work when local storage is unavailable. */ }
   }
