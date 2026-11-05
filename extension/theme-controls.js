@@ -60,6 +60,9 @@ const FOCUSABLE_SELECTOR = [
 
 const THEME_MODE_ORDER = ['system', 'light', 'dark'];
 const THEME_PALETTE_ORDER = ['paper', 'sage', 'mist', 'blush'];
+const COLOR_SOURCE_ORDER = ['preset', 'wallpaper'];
+const BACKGROUND_TYPE_ORDER = ['none', 'image', 'video'];
+const VIDEO_PLAYBACK_ORDER = ['playing', 'paused'];
 const SAVED_SESSION_RESTORE_MODE_ORDER = ['current-window', 'new-window'];
 const SAVED_SESSION_NAV_DISPLAY_MODE_ORDER = ['icon', 'name'];
 const QUICK_SHORTCUT_OPEN_MODE_ORDER = ['new-tab', 'current-tab'];
@@ -76,6 +79,11 @@ const SEARCH_ENGINE_PRESETS = {
 const SEARCH_ENGINE_ORDER = ['default', ...Object.keys(SEARCH_ENGINE_PRESETS), 'custom'];
 const VALID_THEME_MODES = new Set(THEME_MODE_ORDER);
 const VALID_THEME_PALETTES = new Set(THEME_PALETTE_ORDER);
+const VALID_COLOR_SOURCES = new Set(COLOR_SOURCE_ORDER);
+const VALID_BACKGROUND_TYPES = new Set(BACKGROUND_TYPE_ORDER);
+const VALID_VIDEO_PLAYBACKS = new Set(VIDEO_PLAYBACK_ORDER);
+const themeMath = globalThis.TabHarborThemeMath || {};
+const VALID_MATERIALS = themeMath.VALID_MATERIALS || new Set(['default', 'frosted', 'clear']);
 const VALID_SAVED_SESSION_RESTORE_MODES = new Set(SAVED_SESSION_RESTORE_MODE_ORDER);
 const VALID_SAVED_SESSION_NAV_DISPLAY_MODES = new Set(SAVED_SESSION_NAV_DISPLAY_MODE_ORDER);
 const VALID_QUICK_SHORTCUT_OPEN_MODES = new Set(QUICK_SHORTCUT_OPEN_MODE_ORDER);
@@ -91,7 +99,17 @@ const { families: themeFamilyDefinitions, legacyMigration: themeLegacyMigration 
 let themePreferences = {
   mode: 'system',
   paletteId: 'paper',
+  colorSource: 'preset',
+  wallpaperSeedHue: null,
+  wallpaperTheme: null,
+  material: 'default',
+  materialIntensity: 50,
+  wallpaperOverlay: 26,
+  backgroundType: 'none',
   customBackground: '',
+  videoPoster: '',
+  videoMeta: null,
+  videoPlayback: 'playing',
   surfaceOpacity: 14,
   uiScale: 100,
   shortcutScale: 100,
@@ -109,6 +127,27 @@ let themePreferences = {
 
 let systemThemeMediaQuery = null;
 let systemThemeListener = null;
+
+function normalizeWallpaperSeedHue(input) {
+  if (input === null || input === undefined || input === '') return null;
+  const raw = Number(input);
+  if (!Number.isFinite(raw)) return null;
+  return Math.round(((raw % 360) + 360) % 360);
+}
+
+function normalizeVideoMeta(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  return {
+    resourceId: typeof input.resourceId === 'string' ? input.resourceId : '',
+    name: String(input.name || ''),
+    type: String(input.type || ''),
+    size: Math.max(0, Math.round(Number(input.size) || 0)),
+    width: Math.max(0, Math.round(Number(input.width) || 0)),
+    height: Math.max(0, Math.round(Number(input.height) || 0)),
+    duration: Math.max(0, Number(input.duration) || 0),
+    savedAt: typeof input.savedAt === 'string' ? input.savedAt : '',
+  };
+}
 
 function normalizeThemePreferences(input) {
   const next = input && typeof input === 'object' ? input : {};
@@ -133,10 +172,43 @@ function normalizeThemePreferences(input) {
   const rawQuickShortcutOpenMode = String(next.quickShortcutOpenMode || 'new-tab');
   const rawQuickShortcutCols = String(next.quickShortcutCols || 'auto');
   const rawSearchEngine = String(next.searchEngine || 'default');
+  const rawColorSource = String(next.colorSource || 'preset');
+  const customBackground = typeof next.customBackground === 'string' ? next.customBackground : '';
+  // Migration: pre-wallpaper installs only had customBackground. A non-empty
+  // image means "image", anything else means "none".
+  const rawBackgroundType = typeof next.backgroundType === 'string'
+    ? next.backgroundType
+    : (customBackground ? 'image' : 'none');
+  const backgroundType = VALID_BACKGROUND_TYPES.has(rawBackgroundType) ? rawBackgroundType : 'none';
+  const rawMaterial = String(next.material || 'default');
+  const material = VALID_MATERIALS.has(rawMaterial) ? rawMaterial : 'default';
+  const rawMaterialIntensity = Number(next.materialIntensity);
+  const materialIntensity = themeMath.normalizeMaterialIntensity
+    ? themeMath.normalizeMaterialIntensity(next.materialIntensity)
+    : (Number.isFinite(rawMaterialIntensity) ? Math.min(100, Math.max(0, Math.round(rawMaterialIntensity))) : 50);
+  const overlayMode = VALID_THEME_MODES.has(rawMode) ? rawMode : 'system';
+  const overlayMigration = { ...next, mode: overlayMode === 'system' ? getSystemThemeMode() : overlayMode };
+  const rawVideoPlayback = String(next.videoPlayback || 'playing');
+  const wallpaperTheme = themeMath.normalizeWallpaperThemeCache
+    ? themeMath.normalizeWallpaperThemeCache(next.wallpaperTheme)
+    : null;
   return {
     mode: VALID_THEME_MODES.has(rawMode) ? rawMode : 'system',
     paletteId: VALID_THEME_PALETTES.has(rawPaletteId) ? rawPaletteId : 'paper',
-    customBackground: typeof next.customBackground === 'string' ? next.customBackground : '',
+    colorSource: VALID_COLOR_SOURCES.has(rawColorSource) ? rawColorSource : 'preset',
+    wallpaperSeedHue: normalizeWallpaperSeedHue(next.wallpaperSeedHue),
+    wallpaperTheme,
+    material,
+    materialIntensity,
+    wallpaperOverlay: themeMath.normalizeWallpaperOverlay(overlayMigration),
+    wallpaperOverlayTint: themeMath.normalizeWallpaperOverlayTint(overlayMigration),
+    backgroundType,
+    // The image data URL is kept even when another wallpaper type is active,
+    // so switching back to "image" never requires a re-upload.
+    customBackground,
+    videoPoster: typeof next.videoPoster === 'string' ? next.videoPoster : '',
+    videoMeta: normalizeVideoMeta(next.videoMeta),
+    videoPlayback: VALID_VIDEO_PLAYBACKS.has(rawVideoPlayback) ? rawVideoPlayback : 'playing',
     surfaceOpacity,
     uiScale,
     shortcutScale,
@@ -276,6 +348,18 @@ function getThemeFamilyDefinition(paletteId) {
 function getResolvedThemeDefinition(preferences = themePreferences) {
   const normalized = normalizeThemePreferences(preferences);
   const resolvedTone = getResolvedTone(normalized);
+  if (normalized.colorSource === 'wallpaper' && normalized.wallpaperTheme) {
+    const wallpaperVars = normalized.wallpaperTheme[resolvedTone];
+    if (wallpaperVars && typeof wallpaperVars === 'object') {
+      return {
+        id: 'wallpaper',
+        name: themeT ? themeT('colorSourceWallpaper') : 'Wallpaper',
+        meta: 'Monet',
+        tone: resolvedTone,
+        vars: wallpaperVars,
+      };
+    }
+  }
   const family = getThemeFamilyDefinition(normalized.paletteId);
   return {
     id: normalized.paletteId,
@@ -355,13 +439,26 @@ function hexToRgbChannels(hex) {
   return `${r} ${g} ${b}`;
 }
 
-function computeThemeOpacityVars(surfaceOpacity) {
+function computeThemeOpacityVars(surfaceOpacity, materialVars = null) {
+  if (themeMath.computeEffectiveOpacityVars) {
+    return themeMath.computeEffectiveOpacityVars(surfaceOpacity, materialVars || undefined);
+  }
   return {
     '--custom-surface-opacity': `${surfaceOpacity}%`,
     '--custom-border-opacity': `${Math.max(8, surfaceOpacity)}%`,
     '--custom-badge-opacity': `${Math.max(3, Math.round(surfaceOpacity * 0.28))}%`,
     '--custom-fallback-opacity': `${Math.max(4, Math.round(surfaceOpacity * 0.36))}%`,
   };
+}
+
+function computeThemeMaterialVars(preferences = themePreferences) {
+  if (!themeMath.computeMaterialVars) return {};
+  const vars = themeMath.computeMaterialVars(preferences);
+  const result = {};
+  for (const [name, value] of Object.entries(vars)) {
+    if (name.startsWith('--')) result[name] = value;
+  }
+  return { ...result, ...themeMath.computeWallpaperOverlayVars(preferences) };
 }
 
 function computeThemeSizeVars({ uiScale = 100, shortcutScale = 100 } = {}) {
@@ -401,13 +498,21 @@ function applyThemePreferences() {
   globalThis.TabHarborThemeStartup?.sync(themePreferences);
   const root = document.documentElement;
   const body = document.body;
-  const theme = getResolvedThemeDefinition(themePreferences);
-  const opacityVars = computeThemeOpacityVars(themePreferences.surfaceOpacity);
-  const sizeVars = computeThemeSizeVars(themePreferences);
+  const normalized = normalizeThemePreferences(themePreferences);
+  const theme = getResolvedThemeDefinition(normalized);
+  const materialVars = themeMath.computeMaterialVars ? themeMath.computeMaterialVars(normalized) : null;
+  Object.entries(themeMath.computeWallpaperOverlayVars(normalized)).forEach(([name, value]) => root.style.setProperty(name, value));
+  const opacityVars = computeThemeOpacityVars(normalized.surfaceOpacity, materialVars);
+  const sizeVars = computeThemeSizeVars(normalized);
 
   Object.entries(theme.vars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
+  if (materialVars) {
+    Object.entries(materialVars).forEach(([name, value]) => {
+      if (name.startsWith('--')) root.style.setProperty(name, value);
+    });
+  }
   Object.entries(opacityVars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
@@ -421,15 +526,16 @@ function applyThemePreferences() {
 
   const quickTabsList = document.getElementById('quickTabsList');
   if (quickTabsList) {
-    quickTabsList.classList.toggle('is-fixed-cols-4', themePreferences.quickShortcutCols === '4');
-    quickTabsList.classList.toggle('is-fixed-cols-5', themePreferences.quickShortcutCols === '5');
+    quickTabsList.classList.toggle('is-fixed-cols-4', normalized.quickShortcutCols === '4');
+    quickTabsList.classList.toggle('is-fixed-cols-5', normalized.quickShortcutCols === '5');
   }
 
-  if (themePreferences.customBackground) {
-    root.style.setProperty('--page-custom-background', `url("${themePreferences.customBackground}")`);
+  const isImage = normalized.backgroundType === 'image' && normalized.customBackground;
+  const isVideo = normalized.backgroundType === 'video';
+  if (isImage) {
+    root.style.setProperty('--page-custom-background', `url("${normalized.customBackground}")`);
     if (body) {
-      const paperRgb = hexToRgbChannels(theme.vars['--paper']);
-      body.style.backgroundImage = `linear-gradient(rgba(${paperRgb} / 0.26), rgba(${paperRgb} / 0.26)), url("${themePreferences.customBackground}")`;
+      body.style.backgroundImage = `url("${normalized.customBackground}")`;
       body.classList.add('has-custom-background');
     }
   } else {
@@ -439,6 +545,101 @@ function applyThemePreferences() {
       body.classList.remove('has-custom-background');
     }
   }
+  if (body) {
+    body.classList.toggle('has-video-wallpaper', isVideo);
+  }
+  // The video layer is owned by the wallpaper runtime (dashboard only). The
+  // popup never loads it; optional chaining keeps this call free there.
+  globalThis.TabHarborWallpaperRuntime?.sync?.(normalized);
+}
+
+function getWallpaperSeedHue(preferences = themePreferences) {
+  const normalized = normalizeThemePreferences(preferences);
+  if (normalized.wallpaperSeedHue !== null) return normalized.wallpaperSeedHue;
+  const cachedHue = Number(normalized.wallpaperTheme?.seedHue);
+  return Number.isFinite(cachedHue) ? Math.round(cachedHue) : 25;
+}
+
+function getMaterialIntensityLabel(material) {
+  const key = material === 'clear' ? 'materialClearIntensityLabel'
+    : material === 'frosted' ? 'materialFrostedIntensityLabel' : 'materialIntensityLabel';
+  const fallback = material === 'clear' ? 'Transparency strength'
+    : material === 'frosted' ? 'Frosted strength' : 'Glass strength';
+  return themeT ? themeT(key) : fallback;
+}
+
+// Keeps the wallpaper/material rows of the theme menu in sync after a save.
+// The menu markup itself is rendered by dashboard-runtime; this only patches
+// states that change with preferences (active chips, ranges, visibility).
+function syncThemeMenuWallpaperControls(panel) {
+  if (!panel) return;
+  const normalized = normalizeThemePreferences(themePreferences);
+
+  panel.querySelectorAll('[data-action="select-color-source"]').forEach(option => {
+    const isActive = option.dataset.source === normalized.colorSource;
+    option.classList.toggle('is-active', isActive);
+    option.setAttribute('aria-pressed', String(isActive));
+  });
+  panel.querySelectorAll('[data-action="select-material"]').forEach(option => {
+    const isActive = option.dataset.material === normalized.material;
+    option.classList.toggle('is-active', isActive);
+    option.setAttribute('aria-pressed', String(isActive));
+  });
+  panel.querySelectorAll('[data-action="select-background-type"]').forEach(option => {
+    const isActive = option.dataset.backgroundType === normalized.backgroundType;
+    option.classList.toggle('is-active', isActive);
+    option.setAttribute('aria-pressed', String(isActive));
+  });
+
+  panel.querySelectorAll('[data-wallpaper-when-color-source]').forEach(section => {
+    section.style.display = section.dataset.wallpaperWhenColorSource === normalized.colorSource ? '' : 'none';
+  });
+
+  const seedSection = panel.querySelector('#wallpaperSeedSection');
+  if (seedSection) {
+    seedSection.style.display = normalized.colorSource === 'wallpaper' ? '' : 'none';
+  }
+  const seedHue = getWallpaperSeedHue(normalized);
+  const seedRange = panel.querySelector('#themeWallpaperSeedRange');
+  const seedValue = panel.querySelector('#themeWallpaperSeedValue');
+  if (seedRange && document.activeElement !== seedRange) seedRange.value = String(seedHue);
+  if (seedValue) seedValue.textContent = `${seedHue}°`;
+
+  const intensitySection = panel.querySelector('#materialIntensitySection');
+  if (intensitySection) {
+    intensitySection.style.display = normalized.material === 'default' ? 'none' : '';
+  }
+  const intensityLabel = panel.querySelector('#themeMaterialIntensityLabel');
+  if (intensityLabel) intensityLabel.textContent = getMaterialIntensityLabel(normalized.material);
+  const intensityRange = panel.querySelector('#themeMaterialIntensityRange');
+  const intensityValue = panel.querySelector('#themeMaterialIntensityValue');
+  if (intensityRange && document.activeElement !== intensityRange) {
+    intensityRange.value = String(normalized.materialIntensity);
+  }
+  if (intensityValue) intensityValue.textContent = `${normalized.materialIntensity}%`;
+
+  const overlayRange = panel.querySelector('#themeWallpaperOverlayRange');
+  const overlayValue = panel.querySelector('#themeWallpaperOverlayValue');
+  if (overlayRange && document.activeElement !== overlayRange) overlayRange.value = String(normalized.wallpaperOverlay);
+  if (overlayValue) overlayValue.textContent = `${normalized.wallpaperOverlay}%`;
+
+  const clearImageButton = panel.querySelector('[data-action="clear-custom-background"]');
+  if (clearImageButton) clearImageButton.disabled = !normalized.customBackground;
+  const clearVideoButton = panel.querySelector('[data-action="clear-video-wallpaper"]');
+  if (clearVideoButton) clearVideoButton.disabled = !(normalized.videoPoster || normalized.videoMeta);
+
+  const playbackButton = panel.querySelector('[data-action="toggle-video-playback"]');
+  if (playbackButton) {
+    const isPaused = normalized.videoPlayback === 'paused';
+    playbackButton.setAttribute('aria-pressed', String(isPaused));
+    playbackButton.textContent = themeT
+      ? themeT(isPaused ? 'videoPlaybackPlay' : 'videoPlaybackPause')
+      : (isPaused ? 'Play' : 'Pause');
+  }
+
+  panel.querySelectorAll('[data-wallpaper-when]').forEach(section => {
+    section.style.display = section.dataset.wallpaperWhen === normalized.backgroundType ? '' : 'none';
+  });
 }
 
 function renderThemeMenu() {
@@ -487,13 +688,14 @@ function renderThemeMenu() {
 
   options.innerHTML = THEME_PALETTE_ORDER.map(id => {
     const family = getThemeFamilyDefinition(id);
+    const isActive = themePreferences.colorSource !== 'wallpaper' && themePreferences.paletteId === id;
     return `
     <button
-      class="theme-option ${themePreferences.paletteId === id ? 'is-active' : ''}"
+      class="theme-option ${isActive ? 'is-active' : ''}"
       type="button"
       data-action="select-theme"
       data-palette-id="${id}"
-      aria-pressed="${themePreferences.paletteId === id}"
+      aria-pressed="${isActive}"
       style="${getPalettePreviewStyle(id)}"
     >
       <span class="theme-option-main">
@@ -518,6 +720,8 @@ function renderThemeMenu() {
     item.classList.toggle('is-active', isActive);
     item.setAttribute('aria-selected', String(isActive));
   });
+
+  syncThemeMenuWallpaperControls(panel);
 }
 
 async function getQuickShortcuts() {
@@ -2032,11 +2236,17 @@ function syncPopupTheme(targetDoc) {
   const root = targetDoc?.documentElement;
   const body = targetDoc?.body;
   if (!root) return;
-  const theme = getResolvedThemeDefinition(themePreferences);
-  const opacityVars = computeThemeOpacityVars(themePreferences.surfaceOpacity);
-  const sizeVars = computeThemeSizeVars(themePreferences);
+  const normalized = normalizeThemePreferences(themePreferences);
+  const theme = getResolvedThemeDefinition(normalized);
+  const materialVars = computeThemeMaterialVars(normalized);
+  const opacityVars = computeThemeOpacityVars(normalized.surfaceOpacity,
+    themeMath.computeMaterialVars ? themeMath.computeMaterialVars(normalized) : null);
+  const sizeVars = computeThemeSizeVars(normalized);
 
   Object.entries(theme.vars).forEach(([name, value]) => {
+    root.style.setProperty(name, value);
+  });
+  Object.entries(materialVars).forEach(([name, value]) => {
     root.style.setProperty(name, value);
   });
   Object.entries(opacityVars).forEach(([name, value]) => {
@@ -2051,16 +2261,53 @@ function syncPopupTheme(targetDoc) {
   }
 }
 
-async function saveThemePreferences(nextPreferences) {
-  themePreferences = normalizeThemePreferences({
-    ...themePreferences,
-    ...nextPreferences,
+let themePreferenceSaveQueue = Promise.resolve();
+
+function saveThemePreferences(nextPreferences) {
+  // Merge when this write starts, not when the input event fires. Rapid
+  // sliders must preserve each other's fields and commit in event order.
+  const patch = { ...nextPreferences };
+  const save = themePreferenceSaveQueue.then(async () => {
+    let next = normalizeThemePreferences({ ...themePreferences, ...patch });
+    const sourceChanged = next.backgroundType !== themePreferences.backgroundType;
+    const enablingWallpaperColors = patch.colorSource === 'wallpaper' && !next.wallpaperTheme;
+    // Extract inside the save queue so a slow image decode cannot overtake a
+    // later background switch. Uploads already supply their matching cache.
+    if (!Object.hasOwn(patch, 'wallpaperTheme') && (sourceChanged || enablingWallpaperColors)
+      && (next.backgroundType === 'image' || next.backgroundType === 'video')) {
+      const poster = next.backgroundType === 'video' ? next.videoPoster : next.customBackground;
+      const wallpaperTheme = await globalThis.TabHarborWallpaperRuntime?.extractThemeFromImageDataUrl(poster, next.backgroundType) || null;
+      next = normalizeThemePreferences({ ...next, wallpaperTheme, wallpaperSeedHue: wallpaperTheme?.seedHue ?? null });
+    }
+    if (Object.hasOwn(patch, 'wallpaperSeedHue') && !Object.hasOwn(patch, 'wallpaperTheme')) {
+      const wallpaperTheme = globalThis.TabHarborWallpaperRuntime?.regenerateWallpaperTheme(
+        next.wallpaperTheme, next.wallpaperSeedHue);
+      if (wallpaperTheme) next = normalizeThemePreferences({ ...next, wallpaperTheme });
+    }
+    await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: next });
+    themePreferences = next;
+    syncSystemThemeSubscription();
+    applyThemePreferences();
+    renderThemeMenu();
+    return themePreferences;
   });
-  await chrome.storage.local.set({ [THEME_PREFERENCES_KEY]: themePreferences });
-  syncSystemThemeSubscription();
-  applyThemePreferences();
-  renderThemeMenu();
-  return themePreferences;
+  themePreferenceSaveQueue = save.catch(() => {});
+  return save;
+}
+
+// Keep every open dashboard (and the popup) on the same theme: a change made
+// in one Tab Harbor tab lands here via chrome.storage.onChanged. The JSON
+// comparison makes locally-saved updates a no-op so we never re-apply twice.
+if (globalThis.chrome?.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !changes[THEME_PREFERENCES_KEY]) return;
+    const next = normalizeThemePreferences(changes[THEME_PREFERENCES_KEY].newValue);
+    if (JSON.stringify(next) === JSON.stringify(themePreferences)) return;
+    themePreferences = next;
+    syncSystemThemeSubscription();
+    applyThemePreferences();
+    renderThemeMenu();
+  });
 }
 
 async function saveSavedSessionRestoreMode(mode) {
@@ -2072,7 +2319,10 @@ async function saveSavedSessionNavDisplayMode(mode) {
 }
 
 globalThis.TabOutThemeControls = {
+  BACKGROUND_TYPE_ORDER,
+  COLOR_SOURCE_ORDER,
   SEARCH_ENGINE_PRESETS,
+  VIDEO_PLAYBACK_ORDER,
   buildSearchUrlForQuery,
   filterRealTabs,
   getCustomSearchUrl,
@@ -2084,6 +2334,7 @@ globalThis.TabOutThemeControls = {
   getResolvedThemeDefinition,
   getResolvedTone,
   getQuickShortcuts,
+  getThemePreferences: () => normalizeThemePreferences(themePreferences),
   loadThemePreferences,
   normalizeShortcutUrl,
   normalizeQuickShortcuts,

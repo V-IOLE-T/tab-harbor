@@ -4989,6 +4989,30 @@ function renderWorkspacePageSwitch(currentPage = 'home') {
 
 function renderWorkspaceThemeTools() {
   const languagePreference = runtimeGetLanguagePreference ? runtimeGetLanguagePreference() : 'auto';
+  const wallpaperPrefs = typeof normalizeThemePreferences === 'function'
+    ? normalizeThemePreferences(typeof themePreferences !== 'undefined' ? themePreferences : {})
+    : {};
+  const wallpaperSeedHue = wallpaperPrefs.wallpaperSeedHue ?? wallpaperPrefs.wallpaperTheme?.seedHue ?? 25;
+  const videoLimitsMb = Math.round((globalThis.TabHarborVideoWallpaper?.MAX_VIDEO_BYTES || 62914560) / 1048576);
+  const videoLimitsSec = Math.round(globalThis.TabHarborVideoWallpaper?.MAX_VIDEO_SECONDS || 120);
+  const imageLimitsKb = Math.round((globalThis.TabOutBackgroundImage?.MAX_BACKGROUND_BYTES || 921600) / 1024);
+  const activeMaterial = wallpaperPrefs.material || 'default';
+  const activeMaterialIntensity = wallpaperPrefs.materialIntensity ?? 50;
+  const activeBackgroundType = wallpaperPrefs.backgroundType || 'none';
+  const activeColorSource = wallpaperPrefs.colorSource || 'preset';
+  const activeVideoPlayback = wallpaperPrefs.videoPlayback || 'playing';
+  const videoMeta = wallpaperPrefs.videoMeta || null;
+  const hasImage = Boolean(wallpaperPrefs.customBackground);
+  const hasVideo = Boolean(wallpaperPrefs.videoPoster) || Boolean(videoMeta);
+  const videoLimitsHint = runtimeT
+    ? runtimeT('videoLimitsHint', { mb: videoLimitsMb, sec: videoLimitsSec })
+    : `Up to ${videoLimitsMb} MB · ${videoLimitsSec}s`;
+  const imageLimitsHint = runtimeT
+    ? runtimeT('imageLimitsHint', { kb: imageLimitsKb })
+    : `Up to ${imageLimitsKb} KB`;
+  const videoMetaText = videoMeta
+    ? `${videoMeta.name || 'Video'} · ${Math.round((videoMeta.size || 0) / 1048576)} MB · ${Math.round(videoMeta.duration || 0)}s`
+    : '';
   return `
     <div class="group-nav-tools">
       <button class="header-theme-trigger" id="themeMenuTrigger" type="button" data-action="toggle-theme-menu" data-tooltip="${runtimeT ? runtimeT('deskSettings') : 'Desk settings'}" aria-label="${runtimeT ? runtimeT('deskSettings') : 'Desk settings'}" aria-expanded="false" aria-controls="themeMenuPanel">
@@ -5012,15 +5036,95 @@ function renderWorkspaceThemeTools() {
             </div>
           </div>
           <div class="theme-menu-section">
+            <div class="theme-menu-row theme-menu-row-inline-choices">
+              <div class="theme-menu-label">${runtimeT ? runtimeT('colorSourceLabel') : 'Theme colors'}</div>
+              <div class="theme-mode-options" role="group" aria-label="${runtimeT ? runtimeT('colorSourceLabel') : 'Theme colors'}">
+                <button class="theme-mode-option ${activeColorSource === 'preset' ? 'is-active' : ''}" type="button" data-action="select-color-source" data-source="preset" aria-pressed="${activeColorSource === 'preset'}">${runtimeT ? runtimeT('colorSourcePreset') : 'Preset'}</button>
+                <button class="theme-mode-option ${activeColorSource === 'wallpaper' ? 'is-active' : ''}" type="button" data-action="select-color-source" data-source="wallpaper" aria-pressed="${activeColorSource === 'wallpaper'}">${runtimeT ? runtimeT('colorSourceWallpaper') : 'Wallpaper'}</button>
+              </div>
+            </div>
+          </div>
+          <div class="theme-menu-section" id="wallpaperSeedSection"${activeColorSource === 'wallpaper' ? '' : ' style="display:none"'}>
+            <div class="theme-menu-row theme-menu-row-inline-range">
+              <div class="theme-menu-label">${runtimeT ? runtimeT('wallpaperSeedHueLabel') : 'Wallpaper hue'}</div>
+              <input
+                class="theme-range"
+                id="themeWallpaperSeedRange"
+                type="range"
+                aria-label="${runtimeT ? runtimeT('wallpaperSeedHueLabel') : 'Wallpaper hue'}"
+                min="0"
+                max="359"
+                step="1"
+                value="${wallpaperSeedHue}"
+              >
+              <div class="theme-range-value" id="themeWallpaperSeedValue">${wallpaperSeedHue}°</div>
+            </div>
+            ${!wallpaperPrefs.wallpaperTheme ? `<div class="theme-menu-label theme-menu-hint">${runtimeT ? runtimeT('wallpaperSeedHint') : 'Upload an image or video to sample its colors'}</div>` : ''}
+          </div>
+          <div class="theme-menu-section"${activeColorSource === 'wallpaper' ? ' style="display:none"' : ''} data-wallpaper-when-color-source="preset">
             <div class="theme-menu-label">${runtimeT ? runtimeT('deskPalette') : 'Desk palette'}</div>
             <div class="theme-options" id="themeOptions"></div>
           </div>
           <div class="theme-menu-section">
+            <div class="theme-menu-row theme-menu-row-inline-choices">
+              <div class="theme-menu-label">${runtimeT ? runtimeT('materialLabel') : 'Glass'}</div>
+              <div class="theme-mode-options" role="group" aria-label="${runtimeT ? runtimeT('materialLabel') : 'Glass'}">
+                <button class="theme-mode-option ${activeMaterial === 'default' ? 'is-active' : ''}" type="button" data-action="select-material" data-material="default" aria-pressed="${activeMaterial === 'default'}">${runtimeT ? runtimeT('materialDefault') : 'Default'}</button>
+                <button class="theme-mode-option ${activeMaterial === 'frosted' ? 'is-active' : ''}" type="button" data-action="select-material" data-material="frosted" aria-pressed="${activeMaterial === 'frosted'}">${runtimeT ? runtimeT('materialFrosted') : 'Frosted'}</button>
+                <button class="theme-mode-option ${activeMaterial === 'clear' ? 'is-active' : ''}" type="button" data-action="select-material" data-material="clear" aria-pressed="${activeMaterial === 'clear'}">${runtimeT ? runtimeT('materialClear') : 'Clear'}</button>
+              </div>
+            </div>
+          </div>
+          <div class="theme-menu-section" id="materialIntensitySection"${activeMaterial === 'default' ? ' style="display:none"' : ''}>
+            <div class="theme-menu-row theme-menu-row-inline-range">
+              <div class="theme-menu-label" id="themeMaterialIntensityLabel">${getMaterialIntensityLabel(activeMaterial)}</div>
+              <input
+                class="theme-range"
+                id="themeMaterialIntensityRange"
+                type="range"
+                aria-labelledby="themeMaterialIntensityLabel"
+                min="0"
+                max="100"
+                step="1"
+                value="${activeMaterialIntensity}"
+              >
+              <div class="theme-range-value" id="themeMaterialIntensityValue">${activeMaterialIntensity}%</div>
+            </div>
+          </div>
+          <div class="theme-menu-section">
+            <div class="theme-menu-row theme-menu-row-inline-choices">
+              <div class="theme-menu-label">${runtimeT ? runtimeT('backgroundTypeLabel') : 'Backdrop'}</div>
+              <div class="theme-mode-options" role="group" aria-label="${runtimeT ? runtimeT('backgroundTypeLabel') : 'Backdrop'}">
+                <button class="theme-mode-option ${activeBackgroundType === 'none' ? 'is-active' : ''}" type="button" data-action="select-background-type" data-background-type="none" aria-pressed="${activeBackgroundType === 'none'}">${runtimeT ? runtimeT('backgroundTypeNone') : 'None'}</button>
+                <button class="theme-mode-option ${activeBackgroundType === 'image' ? 'is-active' : ''}" type="button" data-action="select-background-type" data-background-type="image" aria-pressed="${activeBackgroundType === 'image'}">${runtimeT ? runtimeT('backgroundTypeImage') : 'Image'}</button>
+                <button class="theme-mode-option ${activeBackgroundType === 'video' ? 'is-active' : ''}" type="button" data-action="select-background-type" data-background-type="video" aria-pressed="${activeBackgroundType === 'video'}">${runtimeT ? runtimeT('backgroundTypeVideo') : 'Video'}</button>
+              </div>
+            </div>
+          </div>
+          <div class="theme-menu-section">
+            <div class="theme-menu-row theme-menu-row-inline-range">
+              <label class="theme-menu-label" for="themeWallpaperOverlayRange">${runtimeT ? runtimeT('wallpaperOverlayLabel') : 'Wallpaper overlay'}</label>
+              <input class="theme-range" id="themeWallpaperOverlayRange" type="range" min="0" max="100" step="1" value="${wallpaperPrefs.wallpaperOverlay}">
+              <div class="theme-range-value" id="themeWallpaperOverlayValue">${wallpaperPrefs.wallpaperOverlay}%</div>
+            </div>
+          </div>
+          <div class="theme-menu-section" data-wallpaper-when="image"${activeBackgroundType === 'image' ? '' : ' style="display:none"'}>
             <div class="theme-menu-label">${runtimeT ? runtimeT('deskBackdrop') : 'Desk backdrop'}</div>
             <div class="theme-menu-actions">
               <button class="theme-menu-action" type="button" data-action="open-background-picker">${runtimeT ? runtimeT('uploadImage') : 'Upload image'}</button>
-              <button class="theme-menu-action is-secondary" type="button" data-action="clear-custom-background">${runtimeT ? runtimeT('clearText') : 'Clear'}</button>
+              <button class="theme-menu-action is-secondary" type="button" data-action="clear-custom-background"${hasImage ? '' : ' disabled'}>${runtimeT ? runtimeT('clearText') : 'Clear'}</button>
             </div>
+            <div class="theme-menu-label theme-menu-hint">${imageLimitsHint}</div>
+          </div>
+          <div class="theme-menu-section" data-wallpaper-when="video"${activeBackgroundType === 'video' ? '' : ' style="display:none"'}>
+            <div class="theme-menu-label">${runtimeT ? runtimeT('backgroundTypeVideo') : 'Video'}</div>
+            <div class="theme-menu-actions">
+              <button class="theme-menu-action" type="button" data-action="open-video-picker">${runtimeT ? runtimeT('uploadVideo') : 'Upload video'}</button>
+              <button class="theme-menu-action" type="button" data-action="toggle-video-playback" aria-pressed="${activeVideoPlayback === 'paused'}">${runtimeT ? runtimeT(activeVideoPlayback === 'paused' ? 'videoPlaybackPlay' : 'videoPlaybackPause') : (activeVideoPlayback === 'paused' ? 'Play' : 'Pause')}</button>
+              <button class="theme-menu-action is-secondary" type="button" data-action="clear-video-wallpaper"${hasVideo ? '' : ' disabled'}>${runtimeT ? runtimeT('clearText') : 'Clear'}</button>
+            </div>
+            <div class="theme-menu-label theme-menu-hint">${videoLimitsHint}</div>
+            ${videoMetaText ? `<div class="theme-menu-label theme-menu-hint">${runtimeEscapeHtmlAttribute ? runtimeEscapeHtmlAttribute(videoMetaText) : videoMetaText}</div>` : ''}
           </div>
           <div class="theme-menu-section">
             <div class="theme-menu-row theme-menu-row-inline-choices">
@@ -5162,6 +5266,7 @@ function renderWorkspaceThemeTools() {
           </div>
         </div>
         <input type="file" id="themeBackgroundInput" accept="image/*" hidden>
+        <input type="file" id="themeVideoInput" accept="video/*" hidden>
         <input type="file" id="configImportInput" accept="application/json,.json" hidden>
       </div>
     </div>`;
@@ -5856,6 +5961,61 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  if (action === 'select-color-source') {
+    const colorSource = actionEl.dataset.source === 'wallpaper' ? 'wallpaper' : 'preset';
+    // Extraction and preference persistence share the ordered save queue.
+    await saveThemePreferences({ colorSource });
+    showToast(runtimeT ? runtimeT('toastThemeUpdated') : 'Theme updated');
+    return;
+  }
+
+  if (action === 'select-material') {
+    const material = ['default', 'frosted', 'clear'].includes(actionEl.dataset.material) ? actionEl.dataset.material : 'default';
+    await saveThemePreferences({ material });
+    // Keep the menu open so the intensity slider can be adjusted in place.
+    return;
+  }
+
+  if (action === 'select-background-type') {
+    const backgroundType = ['none', 'image', 'video'].includes(actionEl.dataset.backgroundType) ? actionEl.dataset.backgroundType : 'none';
+    // Image/video with no media yet: guide the user to the upload flow.
+    if (backgroundType === 'image' && !(themePreferences && themePreferences.customBackground)) {
+      document.getElementById('themeBackgroundInput')?.click();
+      return;
+    }
+    if (backgroundType === 'video' && !(themePreferences && (themePreferences.videoPoster || themePreferences.videoMeta))) {
+      document.getElementById('themeVideoInput')?.click();
+      return;
+    }
+    await saveThemePreferences({ backgroundType });
+    return;
+  }
+
+  if (action === 'open-video-picker') {
+    document.getElementById('themeVideoInput')?.click();
+    return;
+  }
+
+  if (action === 'toggle-video-playback') {
+    const nextPlayback = themePreferences && themePreferences.videoPlayback === 'paused' ? 'playing' : 'paused';
+    await saveThemePreferences({ videoPlayback: nextPlayback });
+    return;
+  }
+
+  if (action === 'clear-video-wallpaper') {
+    const resourceId = themePreferences.videoMeta?.resourceId || '';
+    await saveThemePreferences({
+      backgroundType: 'none',
+      videoPoster: '',
+      videoMeta: null,
+      videoPlayback: 'playing',
+    });
+    await globalThis.TabHarborVideoWallpaperStore?.clearVideoBlob(resourceId).catch(() => {});
+    setThemeMenuOpen(false, { restoreFocus: true });
+    showToast(runtimeT ? runtimeT('toastVideoWallpaperCleared') : 'Video wallpaper cleared');
+    return;
+  }
+
   if (action === 'select-quick-shortcut-cols') {
     const cols = ['auto', '4', '5'].includes(actionEl.dataset.cols) ? actionEl.dataset.cols : 'auto';
     await saveThemePreferences({ quickShortcutCols: cols });
@@ -5890,7 +6050,7 @@ document.addEventListener('click', async (e) => {
   }
 
   if (action === 'clear-custom-background') {
-    await saveThemePreferences({ customBackground: '' });
+    await saveThemePreferences({ customBackground: '', backgroundType: 'none' });
     setThemeMenuOpen(false, { restoreFocus: true });
     showToast(runtimeT ? runtimeT('toastBackgroundCleared') : 'Background cleared');
     return;
@@ -7528,6 +7688,22 @@ document.addEventListener('input', async (e) => {
     return;
   }
 
+  if (e.target.id === 'themeWallpaperSeedRange') {
+    // Regenerate against the cache current when this queued save executes.
+    await saveThemePreferences({ wallpaperSeedHue: Number(e.target.value) });
+    return;
+  }
+
+  if (e.target.id === 'themeWallpaperOverlayRange') {
+    await saveThemePreferences({ wallpaperOverlay: Number(e.target.value) });
+    return;
+  }
+
+  if (e.target.id === 'themeMaterialIntensityRange') {
+    await saveThemePreferences({ materialIntensity: Number(e.target.value) });
+    return;
+  }
+
   if (e.target.id === 'themeTransparencyRange') {
     themePreferences = normalizeThemePreferences({
       ...themePreferences,
@@ -7622,6 +7798,40 @@ document.addEventListener('change', async (e) => {
     return;
   }
 
+  if (e.target.id === 'themeVideoInput') {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || e.target.disabled) return;
+    const input = e.target;
+    input.disabled = true;
+    let updates;
+    let committed = false;
+    const previousResourceId = themePreferences.videoMeta?.resourceId;
+    try {
+      if (!globalThis.TabHarborWallpaperRuntime) throw new Error('toastVideoWallpaperUnavailable');
+      updates = await globalThis.TabHarborWallpaperRuntime.importVideoWallpaper(file);
+      await saveThemePreferences(updates);
+      committed = true;
+      // Playback uses the explicit ID. Pointer maintenance is best-effort
+      // after commit and must never roll back the now-active resource.
+      await globalThis.TabHarborVideoWallpaperStore?.promoteVideoBlob(updates.videoMeta.resourceId).catch(() => {});
+      if (previousResourceId && previousResourceId !== updates.videoMeta.resourceId) {
+        await globalThis.TabHarborVideoWallpaperStore?.clearVideoBlob(previousResourceId).catch(() => {});
+      }
+      setThemeMenuOpen(false, { restoreFocus: true });
+      showToast(runtimeT ? runtimeT('toastVideoWallpaperImported') : 'Video wallpaper updated');
+    } catch (err) {
+      if (!committed && updates?.videoMeta?.resourceId) {
+        await globalThis.TabHarborVideoWallpaperStore?.clearVideoBlob(updates.videoMeta.resourceId).catch(() => {});
+      }
+      const key = /^toastVideoWallpaper/.test(err?.message || '') ? err.message : 'toastVideoWallpaperSaveFailed';
+      showToast(runtimeT ? runtimeT(key, { sec: globalThis.TabHarborVideoWallpaper?.MAX_VIDEO_SECONDS || 120 }) : 'Could not save video wallpaper');
+    } finally {
+      input.disabled = false;
+    }
+    return;
+  }
+
   if (e.target.id !== 'themeBackgroundInput') return;
 
   const file = e.target.files?.[0];
@@ -7633,9 +7843,11 @@ document.addEventListener('change', async (e) => {
       throw new Error('Background compression is unavailable');
     }
     const customBackground = await compressImageFileForStorage(file);
-    await saveThemePreferences({ customBackground });
+    const wallpaperTheme = await globalThis.TabHarborWallpaperRuntime?.extractThemeFromImageDataUrl(customBackground, 'image');
+    await saveThemePreferences({ customBackground, backgroundType: 'image',
+      wallpaperTheme: wallpaperTheme || null, wallpaperSeedHue: wallpaperTheme?.seedHue ?? null });
     setThemeMenuOpen(false, { restoreFocus: true });
-    showToast('Background updated');
+    showToast(runtimeT ? runtimeT('toastBackgroundUpdated') : 'Background updated');
   } catch (err) {
     showToast(err?.message || 'Could not load background');
   }
@@ -7797,6 +8009,7 @@ async function initializeDashboardRuntime() {
   );
   await loadThemePreferences();
   syncSearchPlaceholder();
+  globalThis.TabHarborWallpaperRuntime?.init();
   sleepControlEnabled = (typeof themePreferences !== 'undefined' && themePreferences.sleepControlEnabled === true);
 
   const navHost = getWorkspaceTopNavHost();
