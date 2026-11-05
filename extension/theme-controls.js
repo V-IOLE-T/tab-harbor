@@ -560,6 +560,14 @@ function getWallpaperSeedHue(preferences = themePreferences) {
   return Number.isFinite(cachedHue) ? Math.round(cachedHue) : 25;
 }
 
+function getMaterialIntensityLabel(material) {
+  const key = material === 'clear' ? 'materialClearIntensityLabel'
+    : material === 'frosted' ? 'materialFrostedIntensityLabel' : 'materialIntensityLabel';
+  const fallback = material === 'clear' ? 'Transparency strength'
+    : material === 'frosted' ? 'Frosted strength' : 'Glass strength';
+  return themeT ? themeT(key) : fallback;
+}
+
 // Keeps the wallpaper/material rows of the theme menu in sync after a save.
 // The menu markup itself is rendered by dashboard-runtime; this only patches
 // states that change with preferences (active chips, ranges, visibility).
@@ -601,6 +609,8 @@ function syncThemeMenuWallpaperControls(panel) {
   if (intensitySection) {
     intensitySection.style.display = normalized.material === 'default' ? 'none' : '';
   }
+  const intensityLabel = panel.querySelector('#themeMaterialIntensityLabel');
+  if (intensityLabel) intensityLabel.textContent = getMaterialIntensityLabel(normalized.material);
   const intensityRange = panel.querySelector('#themeMaterialIntensityRange');
   const intensityValue = panel.querySelector('#themeMaterialIntensityValue');
   if (intensityRange && document.activeElement !== intensityRange) {

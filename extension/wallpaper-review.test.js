@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = __dirname;
 const { context } = require(path.join(root, 'wallpaper-test-helpers.cjs'));
 
-function controls() {
+function controls(language) {
   const nodes = new Map();
   const writes = [];
   const document = {
@@ -17,6 +17,11 @@ function controls() {
   const env = context({ document, window: { matchMedia: () => ({ matches: false }) },
     chrome: { storage: { local: { set: async value => { writes.push(value.themePreferences); } } } },
   });
+  if (language) {
+    document.readyState = 'loading';
+    env.scope.navigator = { language };
+    env.load('i18n.js');
+  }
   // Load actual classic scripts and call the same save/render functions as UI events.
   for (const file of ['theme-palettes.js', 'theme-math.js', 'vendor/material-color-utilities.js', 'monet-theme.js', 'theme-controls.js']) env.load(file);
   env.scope.testPanel = {
@@ -28,6 +33,46 @@ function controls() {
     prefs: () => env.scope.TabOutThemeControls.getThemePreferences(),
     set: patch => { env.scope.testPatch = patch; vm.runInContext('themePreferences = normalizeThemePreferences(testPatch)', env.scope); },
   };
+}
+
+for (const [language, labels] of [
+  ['en', { frosted: 'Frosted strength', clear: 'Transparency strength', default: 'Glass strength' }],
+  ['zh-CN', { frosted: '磨砂强度', clear: '透明强度', default: '玻璃强度' }],
+  [null, { frosted: 'Frosted strength', clear: 'Transparency strength', default: 'Glass strength' }],
+]) {
+  test(`material labels follow initial render and saved switches (${language || 'fallback'})`, async () => {
+    const env = controls(language);
+    const source = require('node:fs').readFileSync(path.join(root, 'dashboard-runtime.js'), 'utf8');
+    const start = source.indexOf('function renderWorkspaceThemeTools()');
+    const end = source.indexOf('\nasync function handleExportConfig', start);
+    Object.assign(env.scope, {
+      chromeTabGroupsEnabled: true,
+      sleepControlEnabled: true,
+      runtimeT: env.scope.TabHarborI18n?.t,
+      runtimeGetLanguagePreference: () => language || 'auto',
+      runtimeEscapeHtmlAttribute: value => value,
+    });
+    vm.runInContext(source.slice(start, end), env.scope);
+    const label = { textContent: '' };
+    const section = { style: {} };
+    const range = { value: '67' };
+    env.nodes.set('#themeMaterialIntensityLabel', label);
+    env.nodes.set('#materialIntensitySection', section);
+    env.nodes.set('#themeMaterialIntensityRange', range);
+    env.set({ material: 'frosted', materialIntensity: 67 });
+    for (const material of ['frosted', 'clear', 'default', 'clear', 'frosted']) {
+      await env.save({ material });
+      env.sync();
+      const html = vm.runInContext('renderWorkspaceThemeTools()', env.scope);
+      assert.ok(html.includes(`id="themeMaterialIntensityLabel">${labels[material]}</div>`));
+      assert.match(html, /id="themeMaterialIntensityRange"\s+type="range"\s+aria-labelledby="themeMaterialIntensityLabel"/);
+      assert.equal(label.textContent, labels[material]);
+      assert.equal(section.style.display, material === 'default' ? 'none' : '');
+      assert.equal(html.includes('id="materialIntensitySection" style="display:none"'), material === 'default');
+      assert.equal(range.value, '67');
+      assert.equal(env.prefs().materialIntensity, 67);
+    }
+  });
 }
 
 test('Clear controls follow uploaded, cleared and externally replaced wallpaper preferences', async () => {

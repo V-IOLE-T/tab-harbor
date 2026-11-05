@@ -5077,12 +5077,12 @@ function renderWorkspaceThemeTools() {
           </div>
           <div class="theme-menu-section" id="materialIntensitySection"${activeMaterial === 'default' ? ' style="display:none"' : ''}>
             <div class="theme-menu-row theme-menu-row-inline-range">
-              <div class="theme-menu-label">${runtimeT ? runtimeT('materialIntensityLabel') : 'Glass strength'}</div>
+              <div class="theme-menu-label" id="themeMaterialIntensityLabel">${getMaterialIntensityLabel(activeMaterial)}</div>
               <input
                 class="theme-range"
                 id="themeMaterialIntensityRange"
                 type="range"
-                aria-label="${runtimeT ? runtimeT('materialIntensityLabel') : 'Glass strength'}"
+                aria-labelledby="themeMaterialIntensityLabel"
                 min="0"
                 max="100"
                 step="1"
