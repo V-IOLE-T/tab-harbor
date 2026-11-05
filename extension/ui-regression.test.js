@@ -9,7 +9,7 @@ const appEntryJs = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const backgroundJs = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 const chromeImportJs = fs.readFileSync(path.join(__dirname, 'chrome-tab-groups-import.js'), 'utf8');
 const runtimeJs = fs.readFileSync(path.join(__dirname, 'dashboard-runtime.js'), 'utf8');
-const themeJs = ['theme-palettes.js', 'theme-controls.js']
+const themeJs = ['theme-math.js', 'theme-palettes.js', 'theme-controls.js']
   .map(file => fs.readFileSync(path.join(__dirname, file), 'utf8')).join('\n');
 const drawerJs = fs.readFileSync(path.join(__dirname, 'drawer-manager.js'), 'utf8');
 const helperJs = fs.readFileSync(path.join(__dirname, 'ui-helpers.js'), 'utf8');
@@ -501,7 +501,7 @@ test('back-to-top button styles and behavior are wired up', () => {
   assert.match(css, /\.back-to-top\.visible\s*\{/);
   assert.match(css, /\.back-to-top\s*\{[\s\S]*border-radius:\s*999px;/);
   assert.match(css, /\.back-to-top\s*\{[\s\S]*var\(--floating-surface-opacity\)/);
-  assert.match(css, /\.back-to-top\s*\{[\s\S]*backdrop-filter:\s*blur\(10px\)/);
+  assert.match(css, /\.back-to-top\s*\{[\s\S]*backdrop-filter:\s*blur\(var\(--glass-blur\)\)/);
   assert.match(appJs, /window\.scrollTo\(\{\s*top:\s*0,\s*behavior:\s*prefersReducedMotion\(\) \? 'auto' : 'smooth'/);
   assert.match(appJs, /document\.getElementById\('backToTopBtn'\)/);
 });
@@ -1085,7 +1085,7 @@ test('interactive controls keep button semantics and reduced-motion support', ()
 
   assert.match(themeJs, /class="quick-shortcut-open" type="button"/);
   assert.match(themeJs, /class="quick-shortcut-remove" type="button"/);
-  assert.match(themeJs, /aria-pressed="\$\{themePreferences\.paletteId === id\}"/);
+  assert.match(themeJs, /aria-pressed="\$\{isActive\}"/);
   assert.match(themeJs, /aria-pressed="\$\{themePreferences\.mode === id\}"/);
   assert.match(themeJs, /function prefersReducedMotion\(\)/);
   assert.match(appJs, /behavior:\s*prefersReducedMotion\(\) \? 'auto' : 'smooth'/);
@@ -1184,7 +1184,7 @@ test('quick shortcuts default to a new active tab and can opt into the current t
   assert.match(runtimeJs, /saveThemePreferences\(\{\s*quickShortcutOpenMode: nextMode\s*\}\)/);
   assert.match(runtimeJs, /toggleSwitch\.classList\.toggle\('is-active', nextMode === 'current-tab'\)/);
   assert.match(runtimeJs, /toggleSwitch\.setAttribute\('aria-pressed', String\(nextMode === 'current-tab'\)\)/);
-  assert.match(themeJs, /globalThis\.TabOutThemeControls = \{\s*SEARCH_ENGINE_PRESETS,\s*buildSearchUrlForQuery,\s*filterRealTabs,\s*getCustomSearchUrl,\s*getQuickShortcutCols,\s*getQuickShortcutOpenMode,/);
+  assert.match(themeJs, /globalThis\.TabOutThemeControls = \{[\s\S]*SEARCH_ENGINE_PRESETS,[\s\S]*buildSearchUrlForQuery,\s*filterRealTabs,\s*getCustomSearchUrl,\s*getQuickShortcutCols,\s*getQuickShortcutOpenMode,/);
   assert.match(i18nJs, /quickShortcutOpenModeLabel: 'Open quick links in current tab'/);
   assert.match(i18nJs, /quickShortcutOpenModeLabel: '在当前标签页打开快捷链接'/);
 });
@@ -1195,14 +1195,14 @@ test('quick links per row can be fixed to 4 or 5 columns in landscape only', () 
   assert.match(themeJs, /quickShortcutCols:\s*'auto'/);
   assert.match(themeJs, /quickShortcutCols: VALID_QUICK_SHORTCUT_COLS\.has\(rawQuickShortcutCols\) \? rawQuickShortcutCols : 'auto'/);
   // applyThemePreferences pins the grid class from the saved preference.
-  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-4', themePreferences\.quickShortcutCols === '4'\)/);
-  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-5', themePreferences\.quickShortcutCols === '5'\)/);
+  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-4', normalized\.quickShortcutCols === '4'\)/);
+  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-5', normalized\.quickShortcutCols === '5'\)/);
   // Landscape (>=961px) applies fixed tracks; portrait keeps auto-fill.
   assert.match(css, /@media \(min-width: 961px\)[\s\S]*\.quick-tabs-grid\.is-fixed-cols-4 \{\s*grid-template-columns: repeat\(4, 1fr\);[\s\S]*\.quick-tabs-grid\.is-fixed-cols-5 \{\s*grid-template-columns: repeat\(5, 1fr\);[\s\S]*\.quick-tabs-grid\.is-fixed-cols-4 \.quick-shortcut-card,[\s\S]*\.quick-tabs-grid\.is-fixed-cols-5 \.quick-shortcut-card \{\s*width: 100%;/);
   // The fixed rules must NOT leak into the portrait (max-width: 960px) block —
   // scan the whole block, not just its head.
   const portraitStart = css.indexOf('@media (max-width: 960px)');
-  const portraitEnd = css.indexOf('@media (prefers-reduced-motion');
+  const portraitEnd = css.indexOf('@media (prefers-reduced-motion', portraitStart);
   const portraitBlock = portraitStart >= 0 && portraitEnd > portraitStart
     ? css.slice(portraitStart, portraitEnd)
     : '';

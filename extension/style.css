@@ -44,6 +44,15 @@
     --custom-border-opacity: 14%;
     --custom-badge-opacity: 4%;
     --custom-fallback-opacity: 5%;
+    /* Unified glass tokens. theme-math.js overwrites these per material
+       (default / frosted / clear) × intensity; the fallbacks below match the
+       "default" material so the page is readable before any script runs. */
+    --glass-blur: 10px;
+    --glass-saturate: 100%;
+    --glass-surface-scale: 1;
+    --glass-floating-min: 82%;
+    --glass-panel-min: 74%;
+    --glass-scrim-opacity: 0;
     --ui-scale: 1;
     --shortcut-scale: 1;
     --ui-font-8: 8px;
@@ -70,7 +79,7 @@
     /* User surface/border/badge intensity inputs (0-100) feed the derived
        floating/panel opacity values below via clamp(). */
     --floating-surface-opacity: clamp(
-        82%,
+        var(--glass-floating-min),
         calc(var(--custom-surface-opacity) + 54%),
         94%
     );
@@ -79,9 +88,9 @@
         calc(var(--custom-border-opacity) + 18%),
         64%
     );
-    --panel-surface-opacity: 92%;
+    --panel-surface-opacity: min(98%, calc(var(--glass-panel-min) + 18%));
     --panel-card-opacity: clamp(
-        74%,
+        var(--glass-panel-min),
         calc(var(--custom-surface-opacity) + 48%),
         94%
     );
@@ -197,6 +206,7 @@ body::before {
     content: "";
     position: fixed;
     inset: 0;
+    background-color: rgb(0 0 0 / var(--glass-scrim-opacity));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
     pointer-events: none;
     z-index: 1;
@@ -204,6 +214,34 @@ body::before {
 
 body.theme-tone-dark::before {
     opacity: 0.5;
+}
+
+/* Fixed wallpaper layer (video + poster fallback). Sits behind the paper
+   texture and the content column; the player fills it edge-to-edge. */
+.wallpaper-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.wallpaper-video-element {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Reduced-motion users see a static poster, never a moving loop. */
+@media (prefers-reduced-motion: reduce) {
+    .wallpaper-video-element {
+        display: none;
+    }
 }
 
 .container {
@@ -413,7 +451,8 @@ body.theme-tone-dark::before {
         color-mix(in srgb, var(--workspace-accent) 12%, transparent);
     padding: 8px 0;
     z-index: 40;
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .header-search-suggestion-section + .header-search-suggestion-section {
@@ -892,7 +931,8 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
     letter-spacing: 0.2px;
     white-space: nowrap;
     box-shadow: none;
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
     opacity: 0;
     pointer-events: none;
     transition:
@@ -936,7 +976,8 @@ body.quick-shortcut-list-dragging .quick-shortcut-open {
     flex-direction: column;
     gap: 0;
     z-index: 30;
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .theme-menu-section {
@@ -1738,7 +1779,8 @@ body.theme-tone-dark .deferred-shell {
     letter-spacing: 0.2px;
     white-space: nowrap;
     box-shadow: none;
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
     opacity: 0;
     pointer-events: none;
     transition:
@@ -2476,7 +2518,8 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     letter-spacing: 0.2px;
     white-space: nowrap;
     box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 16%, transparent);
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
     opacity: 0;
     pointer-events: none;
     transition:
@@ -3778,7 +3821,8 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
         background 0.18s ease,
         border-color 0.18s ease;
     z-index: 95;
-    backdrop-filter: blur(10px) saturate(1.02);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .back-to-top.visible {
@@ -4282,7 +4326,8 @@ body.entry-animations-enabled .deferred-column .section-header {
         color-mix(in srgb, var(--workspace-accent) 16%, transparent);
     padding: 24px 22px 22px;
     overflow-y: auto;
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .drawer-panel {
@@ -5738,5 +5783,19 @@ body.page-chip-drop-new-group .main-content {
     .page-chip,
     .quick-shortcut-open {
         transform: none !important;
+    }
+}
+
+/* Readable glass fallback: browsers without backdrop-filter must not lean on
+   blur for legibility. The material intensity still shapes opacity, but the
+   scrim floor keeps text contrast even when the blur is silently dropped. */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+    :root {
+        --glass-blur: 0px !important;
+        --glass-saturate: 100% !important;
+        --glass-surface-scale: 1 !important;
+        --glass-floating-min: 92% !important;
+        --glass-panel-min: 88% !important;
+        --glass-scrim-opacity: 0.07 !important;
     }
 }

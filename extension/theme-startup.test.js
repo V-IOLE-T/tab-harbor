@@ -23,21 +23,30 @@ function boot({ cached = null, dark = false, unavailable = false } = {}) {
       get: () => new Promise(resolve => { resolveStorage = resolve; }),
     } } },
   });
-  for (const file of ['theme-palettes.js', 'theme-startup.js']) {
+  for (const file of ['theme-math.js', 'theme-palettes.js', 'theme-startup.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
   }
   return { context, properties, resolveStorage, cache: () => cache };
+}
+
+// Locate a <script src="..."> tag by its src suffix so a preceding HTML
+// comment that merely mentions the filename never shadows the real tag order.
+function scriptSrcIndex(html, src) {
+  const escaped = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = html.match(new RegExp(`<script[^>]*src=["'][^"']*${escaped}["']`));
+  return match ? match.index : -1;
 }
 
 // @lat: [[startup#Theme before dashboard initialization]]
 test('startup theme precedes redirect and screen styles in both extension pages', () => {
   for (const file of ['index.html', 'popup/popup.html']) {
     const html = fs.readFileSync(path.join(__dirname, file), 'utf8');
-    assert.ok(html.indexOf('theme-palettes.js') < html.indexOf('theme-startup.js'));
-    assert.ok(html.indexOf('theme-startup.js') < html.indexOf('rel="stylesheet"'));
-    assert.ok(html.indexOf('theme-startup.js') < html.indexOf('theme-controls.js'));
+    assert.ok(scriptSrcIndex(html, 'theme-math.js') < scriptSrcIndex(html, 'theme-startup.js'));
+    assert.ok(scriptSrcIndex(html, 'theme-palettes.js') < scriptSrcIndex(html, 'theme-startup.js'));
+    assert.ok(scriptSrcIndex(html, 'theme-startup.js') < html.indexOf('rel="stylesheet"'));
+    assert.ok(scriptSrcIndex(html, 'theme-startup.js') < scriptSrcIndex(html, 'theme-controls.js'));
     if (file === 'index.html') {
-      assert.ok(html.indexOf('theme-startup.js') < html.indexOf('focus-redirect.js'));
+      assert.ok(scriptSrcIndex(html, 'theme-startup.js') < scriptSrcIndex(html, 'focus-redirect.js'));
     }
   }
 });
@@ -74,7 +83,32 @@ test('early authoritative read migrates legacy themes and refreshes the cache', 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(state.context.document.documentElement.style.colorScheme, 'dark');
   assert.equal(state.properties['--paper'], state.context.TabHarborThemePalettes.families.mist.dark['--paper']);
-  assert.deepEqual(JSON.parse(state.cache()), { mode: 'dark', paletteId: 'mist' });
+  assert.deepEqual(JSON.parse(state.cache()), {
+    mode: 'dark',
+    paletteId: 'mist',
+    colorSource: 'preset',
+    wallpaperTheme: null,
+  });
+});
+
+test('cached Monet maps and glass paint both tones before storage resolves', () => {
+  const paletteState = boot();
+  const maps = paletteState.context.TabHarborThemePalettes.families.sage;
+  const wallpaperTheme = { version: 1, seedHue: 120, seedChroma: 40,
+    light: { ...maps.light, '--paper': '#f0fff0' }, dark: { ...maps.dark, '--paper': '#102010' } };
+  for (const dark of [true, false]) {
+    const state = boot({ dark, cached: JSON.stringify({ mode: 'system', colorSource: 'wallpaper',
+      wallpaperTheme, material: 'frosted', materialIntensity: 80, surfaceOpacity: 20 }) });
+    assert.equal(state.properties['--paper'], dark ? '#102010' : '#f0fff0');
+    assert.equal(state.properties['--glass-blur'], '28px');
+    assert.equal(state.properties['--custom-surface-opacity'], '17%');
+  }
+});
+
+test('outdated Monet cache falls back to the saved preset at first paint', () => {
+  const state = boot({ cached: JSON.stringify({ mode: 'dark', paletteId: 'blush',
+    colorSource: 'wallpaper', wallpaperTheme: { version: 999 } }) });
+  assert.equal(state.properties['--paper'], state.context.TabHarborThemePalettes.families.blush.dark['--paper']);
 });
 
 test('late startup reads cannot override a runtime theme change', async () => {
@@ -83,5 +117,10 @@ test('late startup reads cannot override a runtime theme change', async () => {
   state.resolveStorage({ themePreferences: { mode: 'light', paletteId: 'paper' } });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(state.properties['--paper'], state.context.TabHarborThemePalettes.families.blush.dark['--paper']);
-  assert.deepEqual(JSON.parse(state.cache()), { mode: 'dark', paletteId: 'blush' });
+  assert.deepEqual(JSON.parse(state.cache()), {
+    mode: 'dark',
+    paletteId: 'blush',
+    colorSource: 'preset',
+    wallpaperTheme: null,
+  });
 });

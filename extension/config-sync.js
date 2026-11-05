@@ -50,6 +50,23 @@
     return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 
+  // Backups carry a poster and descriptive metadata only. A resource ID is
+  // device-local authority to play a blob, so strip it on both export and
+  // import (including backups produced by older builds).
+  function portableThemePreferences(value) {
+    if (!isValidConfigObject(value)) return value;
+    const next = { ...value };
+    if (isValidConfigObject(value.videoMeta)) {
+      const metadataKeys = ['name', 'type', 'size', 'width', 'height', 'duration', 'savedAt'];
+      next.videoMeta = Object.fromEntries(metadataKeys
+        .filter(key => Object.hasOwn(value.videoMeta, key))
+        .map(key => [key, value.videoMeta[key]]));
+    }
+    delete next.videoBlob;
+    delete next.videoUrl;
+    return next;
+  }
+
   async function exportConfig() {
     const data = await chrome.storage.local.get(STORAGE_KEYS);
     const config = {
@@ -62,7 +79,8 @@
       // null so importConfig can reset them to defaults on the target device
       // (a missing key would be skipped by the importer instead).
       const value = data[key];
-      config[key] = value === undefined ? null : value;
+      config[key] = value === undefined ? null
+        : (key === 'themePreferences' ? portableThemePreferences(value) : value);
     }
     return JSON.stringify(config, null, 2);
   }
@@ -110,6 +128,7 @@
 
   function normalizeImportValue(key, value) {
     if (value === null || value === undefined) return getDefaultValue(key);
+    if (key === 'themePreferences') return portableThemePreferences(value);
     if (key === 'quickShortcuts') {
       return apiNormalizeQuickShortcuts ? apiNormalizeQuickShortcuts(value) : value;
     }
