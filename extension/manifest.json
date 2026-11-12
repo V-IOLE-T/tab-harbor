@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "102",
   "name": "Tab Harbor",
   "version": "1.1.2",
   "description": "A new tab dashboard for organizing open tabs, quick links, todos, and saved tab sessions in one calm workspace.",
@@ -12,6 +13,7 @@
     "tabGroups",
     "favicon"
   ],
+  "optional_permissions": ["bookmarks"],
   "chrome_url_overrides": { "newtab": "index.html" },
   "background": { "service_worker": "background.js" },
   "action": {

@@ -640,7 +640,7 @@ function detachSavedSessionTabToNewSession({
   }
 
   function getSavedSessionNavLabel(session) {
-    return String(session?.name || (managerT ? managerT('workspacePageSavedTabs') : 'Saved tabs')).trim() || 'Saved tabs';
+    return String(session?.name || (managerT ? managerT('suggestSectionSessions') : 'Saved sessions')).trim() || 'Saved tabs';
   }
 
   function renderSavedSessionNavButton(session) {

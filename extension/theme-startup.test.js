@@ -29,7 +29,7 @@ function boot({ cached = null, dark = false, unavailable = false } = {}) {
   return { context, properties, resolveStorage, cache: () => cache };
 }
 
-// @lat: [[startup#Theme before dashboard initialization]]
+// @lat: [[architecture#Dashboard 有序脚本#Dashboard 初始化前应用主题]]
 test('startup theme precedes redirect and screen styles in both extension pages', () => {
   for (const file of ['index.html', 'popup/popup.html']) {
     const html = fs.readFileSync(path.join(__dirname, file), 'utf8');

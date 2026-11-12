@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-// @lat: [[startup#Optional fonts never block the workspace]]
+// @lat: [[architecture#Dashboard 有序脚本#可选字体不阻塞工作区]]
 test('workspace mounts before optional network fonts become screen stylesheets', async () => {
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   const fontLinks = [...html.matchAll(/<link\b[^>]*href="https:\/\/fonts.googleapis.com\/css[^>]*>/g)];

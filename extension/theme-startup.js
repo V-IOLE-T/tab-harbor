@@ -1,6 +1,6 @@
 'use strict';
 
-// @lat: [[startup#Theme before dashboard initialization]]
+// @lat: [[architecture#Dashboard 有序脚本#Dashboard 初始化前应用主题]]
 (function initializeStartupTheme() {
   const { families, legacyMigration } = globalThis.TabHarborThemePalettes;
   const cacheKey = 'tabHarborStartupTheme';

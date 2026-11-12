@@ -72,10 +72,11 @@ function makeEnv() {
     'document', 'chrome', 'getTabIdValue', 'closeSearchSuggestions',
     'syncChromeTabGroupExpansionForTab', 'openOrFocusUrl',
     'isExtensionContextInvalidated', 'recoverFromInvalidatedExtensionContext',
+    'chromeTabGroupSyncGroups',
     `${extractFn(runtimeJs, 'activateSearchSuggestion')}\nreturn activateSearchSuggestion;`
   )(sandbox.document, sandbox.chrome, sandbox.getTabIdValue, sandbox.closeSearchSuggestions,
     sandbox.syncChromeTabGroupExpansionForTab, sandbox.openOrFocusUrl,
-    sandbox.isExtensionContextInvalidated, sandbox.recoverFromInvalidatedExtensionContext);
+    sandbox.isExtensionContextInvalidated, sandbox.recoverFromInvalidatedExtensionContext, []);
   return fn;
 }
 
@@ -143,10 +144,11 @@ test('activateSearchSuggestion: stale tab falls through to URL open', async () =
     'document', 'chrome', 'getTabIdValue', 'closeSearchSuggestions',
     'syncChromeTabGroupExpansionForTab', 'openOrFocusUrl',
     'isExtensionContextInvalidated', 'recoverFromInvalidatedExtensionContext',
+    'chromeTabGroupSyncGroups',
     `${extractFn(runtimeJs, 'activateSearchSuggestion')}\nreturn activateSearchSuggestion;`
   )(sandbox.document, sandbox.chrome, sandbox.getTabIdValue, sandbox.closeSearchSuggestions,
     sandbox.syncChromeTabGroupExpansionForTab, sandbox.openOrFocusUrl,
-    sandbox.isExtensionContextInvalidated, sandbox.recoverFromInvalidatedExtensionContext);
+    sandbox.isExtensionContextInvalidated, sandbox.recoverFromInvalidatedExtensionContext, []);
 
   const row = {
     dataset: { suggestionType: 'tab', suggestionUrl: 'https://t.example/', suggestionTabId: '99' },

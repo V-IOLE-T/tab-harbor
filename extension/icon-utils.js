@@ -30,6 +30,97 @@
     'vercel.app',
     'wordpress.com',
   ];
+  const FRIENDLY_DOMAINS = Object.freeze({
+    'github.com': 'GitHub',
+    'www.github.com': 'GitHub',
+    'gist.github.com': 'GitHub Gist',
+    'youtube.com': 'YouTube',
+    'www.youtube.com': 'YouTube',
+    'music.youtube.com': 'YouTube Music',
+    'x.com': 'X',
+    'www.x.com': 'X',
+    'twitter.com': 'X',
+    'www.twitter.com': 'X',
+    'reddit.com': 'Reddit',
+    'www.reddit.com': 'Reddit',
+    'old.reddit.com': 'Reddit',
+    'substack.com': 'Substack',
+    'www.substack.com': 'Substack',
+    'medium.com': 'Medium',
+    'www.medium.com': 'Medium',
+    'linkedin.com': 'LinkedIn',
+    'www.linkedin.com': 'LinkedIn',
+    'stackoverflow.com': 'Stack Overflow',
+    'www.stackoverflow.com': 'Stack Overflow',
+    'news.ycombinator.com': 'Hacker News',
+    'google.com': 'Google',
+    'www.google.com': 'Google',
+    'mail.google.com': 'Gmail',
+    'docs.google.com': 'Google Docs',
+    'drive.google.com': 'Google Drive',
+    'calendar.google.com': 'Google Calendar',
+    'meet.google.com': 'Google Meet',
+    'gemini.google.com': 'Gemini',
+    'chatgpt.com': 'ChatGPT',
+    'www.chatgpt.com': 'ChatGPT',
+    'chat.openai.com': 'ChatGPT',
+    'claude.ai': 'Claude',
+    'www.claude.ai': 'Claude',
+    'code.claude.com': 'Claude Code',
+    'notion.so': 'Notion',
+    'www.notion.so': 'Notion',
+    'figma.com': 'Figma',
+    'www.figma.com': 'Figma',
+    'slack.com': 'Slack',
+    'app.slack.com': 'Slack',
+    'discord.com': 'Discord',
+    'www.discord.com': 'Discord',
+    'wikipedia.org': 'Wikipedia',
+    'en.wikipedia.org': 'Wikipedia',
+    'amazon.com': 'Amazon',
+    'www.amazon.com': 'Amazon',
+    'netflix.com': 'Netflix',
+    'www.netflix.com': 'Netflix',
+    'spotify.com': 'Spotify',
+    'open.spotify.com': 'Spotify',
+    'vercel.com': 'Vercel',
+    'www.vercel.com': 'Vercel',
+    'npmjs.com': 'npm',
+    'www.npmjs.com': 'npm',
+    'developer.mozilla.org': 'MDN',
+    'arxiv.org': 'arXiv',
+    'www.arxiv.org': 'arXiv',
+    'huggingface.co': 'Hugging Face',
+    'www.huggingface.co': 'Hugging Face',
+    'producthunt.com': 'Product Hunt',
+    'www.producthunt.com': 'Product Hunt',
+    'xiaohongshu.com': 'RedNote',
+    'www.xiaohongshu.com': 'RedNote',
+    'local-files': 'Local Files',
+  });
+
+  function capitalizeFriendlyPart(value = '') {
+    const text = String(value || '');
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+  }
+
+  function friendlyDomain(hostname = '') {
+    const value = String(hostname || '');
+    if (!value) return '';
+    if (FRIENDLY_DOMAINS[value]) return FRIENDLY_DOMAINS[value];
+
+    if (value.endsWith('.substack.com') && value !== 'substack.com') {
+      return `${capitalizeFriendlyPart(value.replace('.substack.com', ''))}'s Substack`;
+    }
+    if (value.endsWith('.github.io')) {
+      return `${capitalizeFriendlyPart(value.replace('.github.io', ''))} (GitHub Pages)`;
+    }
+
+    const clean = value
+      .replace(/^www\./, '')
+      .replace(/\.(co\.uk|co\.jp|com|org|net|io|co|ai|dev|app|so|me|xyz|info|us|uk)$/, '');
+    return clean.split('.').map(capitalizeFriendlyPart).join(' ');
+  }
 
   function getHostname(url) {
     if (!url) return '';
@@ -212,6 +303,7 @@
   const api = {
     escapeHtml,
     escapeHtmlAttribute,
+    friendlyDomain,
     getFallbackLabel,
     getPageOriginFaviconUrl,
     getGoogleFaviconUrl,

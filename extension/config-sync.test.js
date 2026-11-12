@@ -51,6 +51,12 @@ test('STORAGE_KEYS includes popupView so popup view memory survives export/impor
   assert.ok(STORAGE_KEYS.includes('popupView'), 'popupView must round-trip through config export/import');
 });
 
+test('STORAGE_KEYS excludes session-only Chrome group identity metadata', () => {
+  assert.ok(!STORAGE_KEYS.includes('chromeTabGroupsMeta'));
+  assert.ok(!STORAGE_KEYS.includes('automaticTabGroupRuleOverrides'));
+  assert.ok(!STORAGE_KEYS.includes('chromeTabGroupsCleanupPending'));
+});
+
 test('exportConfig returns the complete versioned configuration with custom icons', async () => {
   const initial = {
     themePreferences: { mode: 'dark', paletteId: 'sage' },

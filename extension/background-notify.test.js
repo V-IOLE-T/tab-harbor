@@ -123,6 +123,7 @@ test('non-connection errors from sendMessage are surfaced via console.warn', asy
 
 test('tab replacement broadcasts via chrome.runtime.sendMessage', async () => {
   const { chrome, captured, state } = buildChrome();
+  chrome.tabs.get = async (id) => ({ id, windowId: 7 });
   chrome.runtime.sendMessage = async (msg) => {
     state.sendMessageCalls.push(msg);
   };
@@ -137,5 +138,6 @@ test('tab replacement broadcasts via chrome.runtime.sendMessage', async () => {
     source: 'tabs.onReplaced',
     triggerTabId: 123,
     replacedTabId: 122,
+    windowId: 7,
   });
 });
