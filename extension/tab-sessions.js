@@ -334,10 +334,16 @@
         ? { ...existingState.assignments }
         : {},
     };
+    const restoredBySourceIndex = new Map();
     const restoredByUrl = new Map();
-    for (const tab of Array.isArray(restoredTabs) ? restoredTabs : []) {
+    for (const [restoredIndex, tab] of (Array.isArray(restoredTabs) ? restoredTabs : []).entries()) {
       const canonicalUrl = sessionsGetCanonicalTabUrl ? sessionsGetCanonicalTabUrl(tab?.url || '') : normalizeString(tab?.url);
       if (!canonicalUrl || tab?.id == null) continue;
+      // Session restore creates tabs in saved-session order and carries that
+      // source index forward. That is the durable *instance* relationship:
+      // URLs can repeat in one group or in several different groups.
+      const sourceIndex = Number.isInteger(tab?.sourceIndex) ? tab.sourceIndex : restoredIndex;
+      restoredBySourceIndex.set(sourceIndex, String(tab.id));
       if (!restoredByUrl.has(canonicalUrl)) restoredByUrl.set(canonicalUrl, []);
       restoredByUrl.get(canonicalUrl).push(String(tab.id));
     }
@@ -347,6 +353,15 @@
     const chromeGroupPlans = [];
 
     const sessionGroups = Array.isArray(session?.groups) ? session.groups : [];
+    const sessionTabs = Array.isArray(session?.tabs) ? session.tabs : [];
+    const restoredIdsByGroupKey = new Map();
+    for (const [sourceIndex, tabId] of restoredBySourceIndex.entries()) {
+      const groupKey = normalizeString(sessionTabs[sourceIndex]?.groupKey);
+      if (!groupKey) continue;
+      if (!restoredIdsByGroupKey.has(groupKey)) restoredIdsByGroupKey.set(groupKey, []);
+      restoredIdsByGroupKey.get(groupKey).push(tabId);
+    }
+
     sessionGroups.forEach((group, index) => {
       const groupKey = normalizeString(group?.key);
       if (groupKey.startsWith(MANUAL_GROUP_PREFIX)) {
@@ -358,22 +373,33 @@
           createdAt: normalizeString(now) || new Date().toISOString(),
         });
 
-        for (const url of Array.isArray(group.tabUrls) ? group.tabUrls : []) {
-          const tabIds = restoredByUrl.get(url) || [];
-          const tabId = tabIds.shift();
-          if (tabId) normalizedState.assignments[tabId] = groupId;
+        const instanceTabIds = restoredIdsByGroupKey.get(groupKey);
+        if (instanceTabIds) {
+          for (const tabId of instanceTabIds) normalizedState.assignments[tabId] = groupId;
+        } else {
+          // Legacy snapshots without per-tab groupKey retain the former
+          // best-effort URL fallback. New snapshots never take this path.
+          for (const url of Array.isArray(group.tabUrls) ? group.tabUrls : []) {
+            const tabIds = restoredByUrl.get(url) || [];
+            const tabId = tabIds.shift();
+            if (tabId) normalizedState.assignments[tabId] = groupId;
+          }
         }
       } else if (groupKey.startsWith(CHROME_GROUP_PREFIX)) {
         // Restore as a fresh native Chrome group: title + color + the tab
         // order recorded in tabUrls (the native group id is session-local and
-        // cannot be reused). Every restored tab matching a recorded url joins —
-        // a url appears once in tabUrls but may map to several restored tabs.
-        const planTabIds = [];
-        for (const url of Array.isArray(group.tabUrls) ? group.tabUrls : []) {
-          const tabIds = restoredByUrl.get(url) || [];
-          if (tabIds.length) {
-            planTabIds.push(...tabIds);
-            restoredByUrl.set(url, []);
+        // cannot be reused). Modern snapshots use their per-tab groupKey,
+        // preserving distinct same-URL instances; older snapshots fall back
+        // to the historical URL mapping below.
+        const instanceTabIds = restoredIdsByGroupKey.get(groupKey);
+        const planTabIds = instanceTabIds ? instanceTabIds.slice() : [];
+        if (!instanceTabIds) {
+          for (const url of Array.isArray(group.tabUrls) ? group.tabUrls : []) {
+            const tabIds = restoredByUrl.get(url) || [];
+            if (tabIds.length) {
+              planTabIds.push(...tabIds);
+              restoredByUrl.set(url, []);
+            }
           }
         }
         if (planTabIds.length > 0) {

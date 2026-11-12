@@ -1248,7 +1248,10 @@
           }
 
           if (plan.kind === 'create') {
-            const groupId = await chromeApi.tabs.group({ tabIds: plan.group.tabIds });
+            const groupId = await chromeApi.tabs.group({
+              tabIds: plan.group.tabIds,
+              createProperties: { windowId: payload.windowId },
+            });
             if (!Number.isInteger(groupId) || groupId < 0) {
               throw new CoordinatorError('CREATE_FAILED', `Chrome did not create a group for ${plan.group.groupKey}`);
             }
@@ -1490,11 +1493,22 @@
         } catch {}
       }
       const requestedOrder = payload.orderedTabIds.filter(tabId => liveIds.includes(Number(tabId)));
+      let orderApplied = true;
       if (requestedOrder.length > 1) {
         const baseIndex = Math.min(...liveIds
           .map(tabId => Number(snapshot.tabsById.get(tabId)?.index))
           .filter(Number.isFinite));
-        if (Number.isFinite(baseIndex)) await moveTabsInOrder(requestedOrder, payload.windowId, baseIndex);
+        orderApplied = Number.isFinite(baseIndex);
+        if (orderApplied) {
+          try {
+            await moveTabsInOrder(requestedOrder, payload.windowId, baseIndex);
+          } catch (error) {
+            orderApplied = false;
+            try {
+              logger.warn?.('[tab-harbor] group created but tab ordering failed:', error);
+            } catch {}
+          }
+        }
       }
       const refreshed = await refreshSnapshotAfterWrites(payload.windowId, snapshot);
       const nativeGroups = buildNativeState(refreshed.snapshot, map);
@@ -1505,6 +1519,7 @@
         windowId: payload.windowId,
         groupId,
         updated,
+        orderApplied,
         mergedTabIds: liveIds,
         skippedTabIds,
         state: {

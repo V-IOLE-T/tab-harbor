@@ -26,6 +26,10 @@ async function initializeApp() {
   }
 
   await appMountDashboardRuntime();
+
+  // External typography must never delay local shortcuts or the empty state.
+  const optionalFonts = document.getElementById('optionalFonts');
+  if (optionalFonts) optionalFonts.media = 'all';
 }
 
 initializeApp();

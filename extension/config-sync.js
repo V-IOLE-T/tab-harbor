@@ -139,6 +139,12 @@
     }
 
     await chrome.storage.local.set(storagePayload);
+    // chromeTabGroupsMeta was a session-local Chrome id cache accidentally
+    // exported by older builds. Never import it across devices; removing it
+    // also prevents an old config from being mistaken for durable ownership.
+    try {
+      await chrome.storage.local.remove?.('chromeTabGroupsMeta');
+    } catch {}
 
     return { importedKeys: Object.keys(storagePayload) };
   }

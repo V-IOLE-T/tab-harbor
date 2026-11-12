@@ -123,18 +123,21 @@ test('non-connection errors from sendMessage are surfaced via console.warn', asy
 
 test('tab replacement broadcasts via chrome.runtime.sendMessage', async () => {
   const { chrome, captured, state } = buildChrome();
+  chrome.tabs.get = async (id) => ({ id, windowId: 7 });
   chrome.runtime.sendMessage = async (msg) => {
     state.sendMessageCalls.push(msg);
   };
   loadBackground(chrome);
   assert.ok(captured.onReplaced, 'background should register a tabs.onReplaced listener');
 
-  await captured.onReplaced(123);
+  await captured.onReplaced(123, 122);
 
   assert.strictEqual(state.sendMessageCalls.length, 1);
   assert.deepStrictEqual(state.sendMessageCalls[0], {
     action: 'tabs-changed',
     source: 'tabs.onReplaced',
     triggerTabId: 123,
+    replacedTabId: 122,
+    windowId: 7,
   });
 });

@@ -81,6 +81,8 @@ This permission allows Tab Harbor to send the query through the browser’s defa
 Used only while the user is typing in the built-in search field and the inline suggestion panel is shown.  
 Tab Harbor reads a bounded list of recently visited pages to suggest them as destinations, alongside open tabs, quick links, Chrome bookmarks available after optional access is granted, and saved sessions. History is read on demand while the user types, filtered in the page, and never stored, exported, or sent anywhere by Tab Harbor.
 
+History suggestion icons use Chrome's extension-local favicon cache or the page origin, with a blank icon if neither is available. History entries never trigger a request to a third-party favicon service.
+
 ### `bookmarks` (optional)
 
 The `bookmarks` permission is optional and is not requested during installation. Tab Harbor requests it only when the user explicitly clicks **Show bookmarks**.

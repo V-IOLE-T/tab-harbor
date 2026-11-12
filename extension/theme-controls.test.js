@@ -21,6 +21,7 @@ globalThis.window = {
   }),
 };
 
+require('./theme-palettes.js');
 require('./theme-controls.js');
 
 const {

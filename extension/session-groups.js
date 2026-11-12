@@ -79,6 +79,28 @@
     };
   }
 
+  function transferSessionGroupAssignment(state, removedTabId, addedTabId) {
+    const normalizedState = normalizeSessionGroups(state);
+    const sourceId = Number(removedTabId);
+    const targetId = Number(addedTabId);
+    if (!Number.isFinite(sourceId) || sourceId < 0 || !Number.isFinite(targetId) || targetId < 0) {
+      return normalizedState;
+    }
+
+    const sourceKey = String(sourceId);
+    const targetKey = String(targetId);
+    if (sourceKey === targetKey) return normalizedState;
+    const groupId = normalizedState.assignments[sourceKey];
+    if (!groupId) return normalizedState;
+
+    const assignments = { ...normalizedState.assignments, [targetKey]: groupId };
+    delete assignments[sourceKey];
+    return {
+      ...normalizedState,
+      assignments,
+    };
+  }
+
   function renameSessionGroup(state, groupId, name) {
     const normalizedState = normalizeSessionGroups(state);
     const targetGroupId = String(groupId || '');
@@ -131,6 +153,7 @@
     normalizeSessionGroups,
     pruneSessionGroups,
     renameSessionGroup,
+    transferSessionGroupAssignment,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

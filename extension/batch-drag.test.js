@@ -11,6 +11,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createChromeTabGroupsCoordinator } = require('./chrome-tab-groups-coordinator.js');
+const { normalizeSessionGroups, pruneSessionGroups } = require('./session-groups.js');
 
 const runtimeJs = fs.readFileSync(path.join(__dirname, 'dashboard-runtime.js'), 'utf8');
 const uiHelpersJs = fs.readFileSync(path.join(__dirname, 'ui-helpers.js'), 'utf8');
@@ -225,6 +227,7 @@ test('sleepTabsByIds classifies stale, active, failed and discarded tabs (C4)', 
     },
   };
   globalThis.discardTab = async (id) => id === 1;
+  globalThis.rememberSleepTabReplacementFallback = () => {};
   const result = await fn([1, 2, 3, 4], { skipActive: true });
   assert.equal(result.discarded, 1);
   assert.equal(result.skippedActive, 1);
@@ -232,6 +235,7 @@ test('sleepTabsByIds classifies stale, active, failed and discarded tabs (C4)', 
   assert.equal(result.stale, 1);
   delete globalThis.chrome;
   delete globalThis.discardTab;
+  delete globalThis.rememberSleepTabReplacementFallback;
 });
 
 test('closeTabsSafely keeps every window last tab and tolerates vanished ids (C4)', async () => {
@@ -825,12 +829,13 @@ test('sleeping a stale (ghost) chip re-renders instead of silently corrupting gr
   assert.match(runtimeJs, /} else if \(stale > 0\) \{\s*showToast\(runtimeT \? runtimeT\('toastTabAlreadyClosed'\) : 'Tab already closed'\);/);
 });
 
-test('close-duplicates and merge-group are header icon actions left of the sleep action', () => {
-  assert.match(runtimeJs, /const dedupButton = hasDupes \? `\s*<button class="group-action-icon" type="button" data-action="dedup-keep-one" data-dupe-urls="\$\{dupeUrlsEncoded\}" aria-label="\$\{dedupLabel\}" data-tooltip="\$\{dedupLabel\}">/);
+test('duplicate cleanup is one visible text button beside the group title', () => {
+  assert.match(runtimeJs, /const dupeBadge = hasDupes\s+\? `<button class="duplicate-count-action" type="button" data-action="dedup-keep-one"/);
+  assert.match(runtimeJs, /const dedupButton = '';/);
   // The merge action is hidden on cards that already ARE a Chrome group.
   assert.match(runtimeJs, /const mergeGroupButton = group\.isChromeGroup \? '' : `\s*<button class="group-action-icon" type="button" data-action="group-card-tabs" data-domain-id="\$\{stableId\}" aria-label="\$\{runtimeT \? runtimeT\('groupCardTabsLabel'\)/);
-  // Close-duplicates sits leftmost, then merge, then the sleep icon.
-  assert.match(runtimeJs, /<div class="mission-actions">\s*\$\{dedupButton\}\s*\$\{mergeGroupButton\}\s*\$\{sleepControlEnabled \? `/);
+  // The icon-only header controls keep merge before the optional sleep action.
+  assert.match(runtimeJs, /<div class="mission-actions">\s*\$\{dedupButton\}\s*\$\{mergeGroupButton\}\s*\$\{sleepControlEnabled && hasSleepableTabs \? `/);
   // Chrome group cards carry their native group id and color for the bar.
   assert.match(runtimeJs, /class="mission-card domain-card \$\{hasDupes \? 'has-amber-bar' : 'has-neutral-bar'\}\$\{group\.isChromeGroup \? ' chrome-group-card' : ''\}"[\s\S]{0,200}data-chrome-group-id="\$\{group\.chromeGroupId\}"[\s\S]{0,120}--chrome-group-color:\$\{chromeColor\}/);
 });
@@ -840,6 +845,56 @@ test('merge/duplicate actions reuse the icon-button style of sleep/save/close', 
   assert.match(helperJs, /mergeGroup: `<svg[\s\S]*<\/svg>`/);
   assert.match(helperJs, /closeDuplicates: `<svg[\s\S]*<\/svg>`/);
   assert.doesNotMatch(runtimeJs, /data-action="group-card-tabs"[\s\S]{0,120}class="action-btn"/);
+});
+
+test('the group sleep button hides when no tab in the card can be slept', () => {
+  // Behavioral: render real cards with the row-level sleep rule mirrored —
+  // a row offers sleep only when its tab is awake, background and
+  // materialized, so an all-asleep (or all-active) card loses the header
+  // moon button exactly like its rows lose their own sleep indicators.
+  const fn = new Function(`
+    const expandedPageChipGroupKeys = new Set();
+    const groupRenameEditorState = null;
+    const selectedPageChipIds = new Set();
+    // Declared-but-null so the guarded fallbacks in the renderer kick in.
+    const runtimeT = null;
+    const runtimeEscapeHtml = null;
+    const runtimeEscapeHtmlAttribute = null;
+    let sleepControlEnabled = true;
+    const CHROME_GROUP_COLOR_MAP = {};
+    const ICONS = { moon: '<i>moon</i>', archive: '<i>arch</i>', close: '<i>close</i>', mergeGroup: '<i>merge</i>', closeDuplicates: '<i>dedup</i>' };
+    function getStableGroupId(key) { return 'stable-' + key; }
+    function getGroupDisplayLabel(group) { return group.label || group.domain; }
+    function getOrderedUniqueTabsForGroup(group) { return group.tabs; }
+    function cleanTitle(title) { return title; }
+    function smartTitle(title) { return title; }
+    function stripTitleNoise(title) { return title; }
+    function getPrimaryTabOrderToken(tab) { return String(tab.id); }
+    function runtimeGetIconSources() { return { sources: [], hostname: '' }; }
+    function runtimeGetFallbackLabel(label) { return label; }
+    ${extractFn(runtimeJs, 'buildOverflowChips')}
+    ${extractFn(runtimeJs, 'buildPageChipHtml')}
+    ${extractFn(runtimeJs, 'renderDomainCard')}
+    return renderDomainCard;
+  `)();
+
+  const awake = { id: 1, url: 'https://a.test/x', title: 'A', windowId: 1, discarded: false, active: false };
+  const asleep = { id: 2, url: 'https://b.test/x', title: 'B', windowId: 1, discarded: true, active: false };
+  const active = { id: 3, url: 'https://c.test/x', title: 'C', windowId: 1, discarded: false, active: true };
+  const cardOf = tabs => fn({ domain: 'a.test', label: 'A', tabs });
+
+  // At least one sleepable tab: the header moon button is present.
+  assert.match(cardOf([awake, asleep]), /data-action="sleep-domain-tabs"/);
+  // Every tab asleep: the moon button hides, exactly like the rows' own
+  // sleep indicators do.
+  assert.doesNotMatch(cardOf([asleep, { ...asleep, id: 4 }]), /data-action="sleep-domain-tabs"/);
+  // Active tabs are not sleepable either (same rule as the rows): an
+  // active + asleep card has nothing left to sleep and hides the button.
+  assert.doesNotMatch(cardOf([active, asleep]), /data-action="sleep-domain-tabs"/);
+  // Sleeping rows keep rendering (with the discarded style) when the header
+  // button is hidden.
+  const allAsleepCard = cardOf([asleep]);
+  assert.match(allAsleepCard, /page-chip--discarded/);
 });
 
 test('per-chip duplicate count badges are not rendered', () => {
@@ -1170,19 +1225,358 @@ test('ensureWindowsKeepLastTab never empties a window (real implementation)', ()
   assert.deepEqual(fn([{ id: 9, windowId: 9, active: false }], [9]), []);
 });
 
+test('saved-session close paths return fulfilled source-tab results without undoing persistence', async () => {
+  const fns = new Function(`
+    ${extractFn(runtimeJs, 'closeSavedSessionSourceTabs')}
+    ${extractFn(runtimeJs, 'saveTabsAsSession')}
+    ${extractFn(runtimeJs, 'appendTabsToExistingSavedSession')}
+    return { saveTabsAsSession, appendTabsToExistingSavedSession };
+  `)();
+  const tabs = [
+    { id: 11, url: 'https://example.com/a', windowId: 7 },
+    { id: 12, url: 'https://example.com/b', windowId: 7 },
+  ];
+  const originalWarn = console.warn;
+  let savedSnapshots = 0;
+  let rendered = 0;
+  globalThis.getTabGroupLookup = () => new Map();
+  globalThis.getTabIdValue = value => Number(value);
+  globalThis.runtimeIsRestorableTabUrl = () => true;
+  globalThis.runtimeBuildSessionSnapshot = ({ tabs: snapshotTabs }) => ({ id: `snapshot-${++savedSnapshots}`, tabs: snapshotTabs });
+  globalThis.runtimeAddSavedTabSession = async snapshot => [snapshot];
+  globalThis.runtimeAppendSavedTabSessionTabs = async () => ({ appendedCount: 2, skippedDuplicateCount: 0 });
+  globalThis.refreshTabSessionModel = async () => tabs;
+  globalThis.getTabsByIds = () => tabs;
+  globalThis.renderDashboard = async () => { rendered += 1; };
+  globalThis.closeTabsSafely = async () => ({ closedCount: 1, closedTabIds: new Set([12]) });
+  console.warn = () => {};
+
+  try {
+    const saved = await fns.saveTabsAsSession(tabs, ['11', '12']);
+    assert.equal(saved.closedCount, 1);
+    assert.deepEqual(saved.closedTabIds, [12], 'the result reports the fulfilled id, not every requested id');
+    assert.equal(saved.closeError, false);
+    assert.equal(rendered, 1, 'the normal save path still refreshes the dashboard');
+
+    globalThis.closeTabsSafely = async () => { throw new Error('tab query failed'); };
+    const savedWithCloseFailure = await fns.saveTabsAsSession(tabs, ['11', '12']);
+    assert.equal(savedWithCloseFailure.session.tabs.length, 2, 'storage success remains visible after a close-stage failure');
+    assert.equal(savedWithCloseFailure.closedCount, 0);
+    assert.deepEqual(savedWithCloseFailure.closedTabIds, []);
+    assert.equal(savedWithCloseFailure.closeError, true);
+
+    globalThis.closeTabsSafely = async () => ({ closedCount: 1, closedTabIds: new Set([11]) });
+    const appended = await fns.appendTabsToExistingSavedSession('session-1', ['11', '12']);
+    assert.equal(appended.closedCount, 1);
+    assert.deepEqual(appended.closedTabIds, [11], 'append-existing uses the same fulfilled-result model');
+    assert.equal(appended.closeError, false);
+  } finally {
+    console.warn = originalWarn;
+    delete globalThis.getTabGroupLookup;
+    delete globalThis.getTabIdValue;
+    delete globalThis.runtimeIsRestorableTabUrl;
+    delete globalThis.runtimeBuildSessionSnapshot;
+    delete globalThis.runtimeAddSavedTabSession;
+    delete globalThis.runtimeAppendSavedTabSessionTabs;
+    delete globalThis.refreshTabSessionModel;
+    delete globalThis.getTabsByIds;
+    delete globalThis.renderDashboard;
+    delete globalThis.closeTabsSafely;
+  }
+});
+
+test('a failed sleep refresh cannot prune manual membership or overwrite a newer save', async () => {
+  const fns = new Function(`
+    let openTabs = [];
+    let allOpenTabIds = [];
+    let hasAuthoritativeOpenTabsSnapshot = false;
+    let sessionGroupsMutationQueue = Promise.resolve();
+    const pendingSessionGroupTabReplacementMigrations = new Set();
+    let sessionGroupsState = { groups: [], assignments: {} };
+    const SESSION_GROUPS_KEY = 'sessionGroups';
+    ${extractFn(runtimeJs, 'waitForSessionGroupTabReplacementMigrations')}
+    ${extractFn(runtimeJs, 'fetchOpenTabs')}
+    ${extractFn(runtimeJs, 'getOpenTabIdsForSessionPruning')}
+    ${extractFn(runtimeJs, 'enqueueSessionGroupsMutation')}
+    ${extractFn(runtimeJs, 'loadSessionGroups')}
+    ${extractFn(runtimeJs, 'saveSessionGroups')}
+    ${extractFn(runtimeJs, 'getRealTabs')}
+    return {
+      fetchOpenTabs,
+      getOpenTabIdsForSessionPruning,
+      loadSessionGroups,
+      saveSessionGroups,
+      getRealTabs,
+      getSessionGroupsState: () => sessionGroupsState,
+    };
+  `)();
+  const globalNames = [
+    'chrome',
+    'window',
+    'isTabHarborNewTabUrl',
+    'getDashboardWindowIdForOpenTabs',
+    'runtimeParseSuspendedTabUrl',
+    'runtimeGetCanonicalTabUrl',
+    'runtimeIsRestorableTabUrl',
+    'normalizeSessionGroups',
+    'pruneSessionGroups',
+  ];
+  const previousGlobals = new Map(globalNames.map(name => [name, {
+    exists: Object.prototype.hasOwnProperty.call(globalThis, name),
+    value: globalThis[name],
+  }]));
+  const originalWarn = console.warn;
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const seed = {
+    groups: [{ id: 'reading', name: 'Reading', createdAt: '2026-08-17T00:00:00.000Z' }],
+    assignments: { 101: 'reading' },
+  };
+  let persisted = clone(seed);
+  let queryTabs = async () => [{
+    id: 101,
+    url: 'https://example.test/article',
+    title: 'Article',
+    windowId: 7,
+    active: false,
+    pinned: false,
+    groupId: -1,
+    index: 0,
+    discarded: false,
+  }];
+  let writes = 0;
+  let deferNextRead = false;
+  let resolveDeferredRead;
+  let resolveReadStarted;
+  let readStarted;
+
+  globalThis.window = { location: { href: 'chrome-extension://test/newtab.html' } };
+  // The merged fetchOpenTabs classifies new-tab URLs via this module-scope
+  // helper; the extracted Function body references it as a free variable, so
+  // the test must provide it on globalThis the same way it provides the other
+  // runtime helpers below.
+  globalThis.isTabHarborNewTabUrl = url => {
+    const raw = String(url || '');
+    return raw === 'chrome://newtab/' || raw === 'chrome-extension://test/newtab.html';
+  };
+  globalThis.getDashboardWindowIdForOpenTabs = async () => 7;
+  globalThis.runtimeParseSuspendedTabUrl = () => ({ isSuspended: false, originalUrl: '', title: '' });
+  globalThis.runtimeGetCanonicalTabUrl = url => url;
+  globalThis.runtimeIsRestorableTabUrl = url => /^https?:/.test(url);
+  globalThis.normalizeSessionGroups = normalizeSessionGroups;
+  globalThis.pruneSessionGroups = pruneSessionGroups;
+  globalThis.chrome = {
+    tabs: { query: async () => queryTabs() },
+    storage: {
+      local: {
+        get: async () => {
+          const snapshot = clone(persisted);
+          if (!deferNextRead) return { sessionGroups: snapshot };
+          deferNextRead = false;
+          resolveReadStarted();
+          return new Promise(resolve => { resolveDeferredRead = () => resolve({ sessionGroups: snapshot }); });
+        },
+        set: async value => {
+          persisted = clone(value.sessionGroups);
+          writes += 1;
+        },
+      },
+    },
+  };
+  console.warn = () => {};
+
+  try {
+    await fns.fetchOpenTabs();
+    await fns.loadSessionGroups(fns.getOpenTabIdsForSessionPruning());
+    assert.deepEqual(persisted, seed, 'the normal authoritative refresh may persist its pruned snapshot');
+
+    queryTabs = async () => { throw new Error('transient tabs query failure'); };
+    await fns.fetchOpenTabs();
+    const writesBeforeFailedRefresh = writes;
+    await fns.loadSessionGroups(fns.getOpenTabIdsForSessionPruning());
+    assert.equal(writes, writesBeforeFailedRefresh, 'an empty result from a failed refresh is never persisted');
+    assert.deepEqual(persisted, seed, 'the manual assignment survives the failed sleep refresh');
+
+    queryTabs = async () => [{
+      id: 101,
+      url: 'https://example.test/article',
+      title: 'Article',
+      windowId: 7,
+      active: false,
+      pinned: false,
+      groupId: -1,
+      index: 0,
+      discarded: true,
+    }];
+    await fns.fetchOpenTabs();
+    await fns.loadSessionGroups(fns.getOpenTabIdsForSessionPruning());
+    assert.equal(fns.getSessionGroupsState().assignments['101'], 'reading');
+    assert.equal(fns.getRealTabs()[0].discarded, true, 'a discarded normal URL remains a real tab');
+
+    // The older read below starts first but returns a stale snapshot. Its
+    // eventual write must not overwrite the later manual-group save.
+    deferNextRead = true;
+    readStarted = new Promise(resolve => { resolveReadStarted = resolve; });
+    const staleLoad = fns.loadSessionGroups([101]);
+    await readStarted;
+    const newerState = {
+      groups: [
+        ...seed.groups,
+        { id: 'later', name: 'Later', createdAt: '2026-08-17T00:00:01.000Z' },
+      ],
+      assignments: { 101: 'reading', 202: 'later' },
+    };
+    const newerSave = fns.saveSessionGroups(newerState);
+    resolveDeferredRead();
+    await Promise.all([staleLoad, newerSave]);
+    assert.deepEqual(persisted, normalizeSessionGroups(newerState), 'the queued newer save wins over the older load');
+
+    // A successful, authoritative snapshot is still allowed to remove an id
+    // that really disappeared; the failure guard must not retain ghosts.
+    queryTabs = async () => [];
+    await fns.fetchOpenTabs();
+    await fns.loadSessionGroups(fns.getOpenTabIdsForSessionPruning());
+    assert.deepEqual(persisted, { groups: [], assignments: {} }, 'a real close is pruned after a trusted refresh');
+  } finally {
+    console.warn = originalWarn;
+    for (const [name, previous] of previousGlobals) {
+      if (previous.exists) globalThis[name] = previous.value;
+      else delete globalThis[name];
+    }
+  }
+});
+
+test('a Chrome tab replacement transfers manual membership before the replacement is pruned', async () => {
+  const fns = new Function(`
+    let sessionGroupsMutationQueue = Promise.resolve();
+    let sessionGroupsState = { groups: [], assignments: {} };
+    const pendingSleepTabReplacementFallbacks = new Map();
+    let sleepTabReplacementFallbackCleanupTimer = null;
+    const SESSION_GROUPS_KEY = 'sessionGroups';
+    ${extractFn(runtimeJs, 'enqueueSessionGroupsMutation')}
+    ${extractFn(runtimeJs, 'pruneExpiredSleepTabReplacementFallbacks')}
+    ${extractFn(runtimeJs, 'scheduleSleepTabReplacementFallbackCleanup')}
+    ${extractFn(runtimeJs, 'rememberSleepTabReplacementFallback')}
+    ${extractFn(runtimeJs, 'getSleepTabReplacementFallback')}
+    ${extractFn(runtimeJs, 'clearSleepTabReplacementFallback')}
+    ${extractFn(runtimeJs, 'migrateSessionGroupAssignmentForTabReplacement')}
+    return {
+      rememberSleepTabReplacementFallback,
+      migrateSessionGroupAssignmentForTabReplacement,
+      fallbacks: pendingSleepTabReplacementFallbacks,
+      getState: () => sessionGroupsState,
+      setState: value => { sessionGroupsState = value; },
+    };
+  `)();
+  const originalGlobals = Object.fromEntries([
+    'chrome',
+    'normalizeSessionGroups',
+    'runtimeTransferSessionGroupAssignment',
+  ].map(name => [name, {
+    exists: Object.prototype.hasOwnProperty.call(globalThis, name),
+    value: globalThis[name],
+  }]));
+  const seed = {
+    groups: [{ id: 'reading', name: 'Reading', createdAt: '2026-08-17T00:00:00.000Z' }],
+    assignments: { 101: 'reading' },
+  };
+  let persisted = JSON.parse(JSON.stringify(seed));
+  globalThis.normalizeSessionGroups = normalizeSessionGroups;
+  globalThis.runtimeTransferSessionGroupAssignment = require('./session-groups.js').transferSessionGroupAssignment;
+  globalThis.chrome = {
+    storage: {
+      local: {
+        get: async () => ({ sessionGroups: JSON.parse(JSON.stringify(persisted)) }),
+        set: async value => { persisted = JSON.parse(JSON.stringify(value.sessionGroups)); },
+      },
+    },
+  };
+
+  try {
+    assert.equal(await fns.migrateSessionGroupAssignmentForTabReplacement(202, 101), true);
+    assert.deepEqual(persisted.assignments, { 202: 'reading' });
+    assert.deepEqual(pruneSessionGroups(persisted, [202]), persisted, 'the next authoritative refresh keeps the replacement id');
+
+    // This is the critical sleep race: a refresh has already removed the old
+    // id, but Chrome then confirms that a new id replaced it.
+    fns.setState(JSON.parse(JSON.stringify(seed)));
+    fns.rememberSleepTabReplacementFallback(101);
+    persisted = { groups: [], assignments: {} };
+    assert.equal(await fns.migrateSessionGroupAssignmentForTabReplacement(303, 101), true);
+    assert.deepEqual(persisted, {
+      groups: seed.groups,
+      assignments: { 303: 'reading' },
+    });
+  } finally {
+    for (const [name, previous] of Object.entries(originalGlobals)) {
+      if (previous.exists) globalThis[name] = previous.value;
+      else delete globalThis[name];
+    }
+  }
+});
+
+test('sleep tab replacement fallbacks actively leave memory when their deadline expires', () => {
+  const scheduled = [];
+  const cleared = [];
+  const fns = new Function('scheduleTimer', 'clearTimer', `
+    const pendingSleepTabReplacementFallbacks = new Map();
+    let sleepTabReplacementFallbackCleanupTimer = null;
+    const setTimeout = scheduleTimer;
+    const clearTimeout = clearTimer;
+    ${extractFn(runtimeJs, 'pruneExpiredSleepTabReplacementFallbacks')}
+    ${extractFn(runtimeJs, 'scheduleSleepTabReplacementFallbackCleanup')}
+    return {
+      fallbacks: pendingSleepTabReplacementFallbacks,
+      scheduleSleepTabReplacementFallbackCleanup,
+      getTimer: () => sleepTabReplacementFallbackCleanupTimer,
+    };
+  `)(
+    (callback, delay) => {
+      const timer = { callback, delay };
+      scheduled.push(timer);
+      return timer;
+    },
+    timer => cleared.push(timer)
+  );
+
+  fns.fallbacks.set('101', { expiresAt: Date.now() + 15000 });
+  fns.scheduleSleepTabReplacementFallbackCleanup();
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay > 0, true, 'the cleanup waits until the fallback deadline');
+
+  fns.fallbacks.get('101').expiresAt = Date.now() - 1;
+  scheduled[0].callback();
+
+  assert.equal(fns.fallbacks.size, 0, 'the deadline callback deletes expired fallback state without another event');
+  assert.equal(fns.getTimer(), null, 'no cleanup timer remains after the final fallback expires');
+  assert.equal(cleared.length, 0, 'the completed timer is not cleared as if it were still pending');
+});
+
+test('runWithSuppressedRefresh releases the refresh gate after success and rejection', async () => {
+  const fn = new Function(`${extractFn(runtimeJs, 'runWithSuppressedRefresh')}\nreturn runWithSuppressedRefresh;`)();
+  const previousWindow = globalThis.window;
+  globalThis.window = { __suppressAutoRefreshUntil: 0 };
+  try {
+    const value = await fn(async () => 'completed');
+    assert.equal(value, 'completed');
+    assert.equal(globalThis.window.__suppressAutoRefreshUntil, 0);
+
+    await assert.rejects(fn(async () => { throw new Error('close failed'); }), /close failed/);
+    assert.equal(globalThis.window.__suppressAutoRefreshUntil, 0, 'a rejected close/render task cannot strand auto-refresh suppression');
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Behavioral: restore-created tabs start ASLEEP (discard-on-restore)
 // ---------------------------------------------------------------------------
 
-test('openSavedTabsInCurrentWindow discards every background tab but keeps the first active one loaded', async () => {
+test('openSavedTabsInCurrentWindow returns background discard requests after creating tabs', async () => {
   const fn = new Function(`
-    ${extractFn(runtimeJs, 'discardTab')}
-    ${extractFn(runtimeJs, 'discardRestoredTabAfterCommit')}
     ${extractFn(runtimeJs, 'openSavedTabsInCurrentWindow')}
     return openSavedTabsInCurrentWindow;
   `)();
 
-  const discarded = [];
   globalThis.getCurrentWindowId = async () => 501;
   globalThis.chrome = {
     windows: { getCurrent: async () => ({ id: 501 }) },
@@ -1193,15 +1587,6 @@ test('openSavedTabsInCurrentWindow discards every background tab but keeps the f
         active: !!opts.active,
         windowId: opts.windowId ?? 501,
       }),
-      // The restored tabs are already committed (url set) so the discard
-      // helper sleeps them immediately instead of polling.
-      get: async (id) => ({
-        id,
-        url: id === 1001 ? 'https://a.test' : id === 1002 ? 'https://b.test' : 'https://c.test',
-        active: false,
-      }),
-      discard: async (id) => { discarded.push(Number(id)); },
-      query: async () => [],
     },
   };
 
@@ -1211,25 +1596,26 @@ test('openSavedTabsInCurrentWindow discards every background tab but keeps the f
     { url: 'https://c.test' },
   ]);
 
-  // The first tab is created active and must NOT be discarded; the two
-  // background tabs are discarded once their navigation commits (restored
-  // tabs start asleep so a large session does not load every page at once).
-  assert.deepEqual(discarded, [1002, 1003]);
-  // The restored id list is unaffected by the discards.
+  // All restored tabs are queued. The active first tab is kept live by the
+  // discard helper until focus moves away; the two background tabs can sleep
+  // as soon as session restore finishes grouping/name/order operations.
   assert.deepEqual(result.restoredTabs.map(t => t.id), [1001, 1002, 1003]);
+  assert.deepEqual(result.restoredTabs.map(t => t.sourceIndex), [0, 1, 2], 'saved tab instances retain their source order');
+  assert.deepEqual(result.backgroundTabDiscards, [
+    { tabId: 1001, url: 'https://a.test' },
+    { tabId: 1002, url: 'https://b.test' },
+    { tabId: 1003, url: 'https://c.test' },
+  ]);
   delete globalThis.getCurrentWindowId;
   delete globalThis.chrome;
 });
 
-test('openSavedTabsInNewWindow discards every background tab of the restored session', async () => {
+test('openSavedTabsInNewWindow returns background discard requests after creating tabs', async () => {
   const fn = new Function(`
-    ${extractFn(runtimeJs, 'discardTab')}
-    ${extractFn(runtimeJs, 'discardRestoredTabAfterCommit')}
     ${extractFn(runtimeJs, 'openSavedTabsInNewWindow')}
     return openSavedTabsInNewWindow;
   `)();
 
-  const discarded = [];
   globalThis.chrome = {
     windows: {
       create: async (opts) => ({ id: 502, tabs: [{ id: 2001, url: opts.url, active: true }] }),
@@ -1241,13 +1627,6 @@ test('openSavedTabsInNewWindow discards every background tab of the restored ses
         active: !!opts.active,
         windowId: opts.windowId ?? 502,
       }),
-      get: async (id) => ({
-        id,
-        url: id === 2001 ? 'https://a.test' : id === 2002 ? 'https://b.test' : 'https://c.test',
-        active: false,
-      }),
-      discard: async (id) => { discarded.push(Number(id)); },
-      query: async () => [],
     },
   };
 
@@ -1257,8 +1636,470 @@ test('openSavedTabsInNewWindow discards every background tab of the restored ses
     { url: 'https://c.test' },
   ]);
 
-  // The first tab comes from windows.create (active) and is never discarded.
-  assert.deepEqual(discarded, [2002, 2003]);
+  // The first tab comes from windows.create (active), but remains queued so it
+  // can sleep automatically after the user switches away.
   assert.deepEqual(result.restoredTabs.map(t => t.id), [2001, 2002, 2003]);
+  assert.deepEqual(result.restoredTabs.map(t => t.sourceIndex), [0, 1, 2], 'saved tab instances retain their source order');
+  assert.deepEqual(result.backgroundTabDiscards, [
+    { tabId: 2001, url: 'https://a.test' },
+    { tabId: 2002, url: 'https://b.test' },
+    { tabId: 2003, url: 'https://c.test' },
+  ]);
   delete globalThis.chrome;
+});
+
+test('restoreSavedTabSession sleeps restored background tabs only after Chrome groups are restored', async () => {
+  const calls = [];
+  let resolveGroupRequest;
+  let finishGroup;
+  const groupRequest = new Promise(resolve => { resolveGroupRequest = resolve; });
+  const grouping = new Promise(resolve => { finishGroup = resolve; });
+  const performChromeGroupMutation = async (operation, payload) => {
+    calls.push('group:start');
+    resolveGroupRequest({ operation, payload });
+    const result = await grouping;
+    calls.push('group:finish');
+    return result;
+  };
+  const fn = new Function('calls', 'performChromeGroupMutation', `
+    const runtimeGetSavedTabSessions = async () => ([{
+      id: 'session-1',
+      tabs: [
+        { url: 'https://a.test', groupKey: '__chrome_group__:saved' },
+        { url: 'https://b.test', groupKey: '__chrome_group__:saved' },
+        { url: 'https://c.test', groupKey: '__chrome_group__:saved' },
+      ],
+    }]);
+    const runtimeGetSavedSessionRestoreMode = () => 'new-window';
+    const runtimeCreateRestoredSessionGroups = ({ restoredTabs }) => {
+      calls.push('plan');
+      return {
+        state: { groups: [], assignments: {} },
+        chromeGroupPlans: [{
+          title: 'Research',
+          color: 'blue',
+          tabIds: restoredTabs.map(tab => tab.id),
+        }],
+      };
+    };
+    let sessionGroupsState = { groups: [], assignments: {} };
+    async function saveSessionGroups() { calls.push('save'); }
+    async function renderDashboard() { calls.push('render'); }
+    async function closeDashboardAfterTabFocus(tabId) { calls.push('close-dashboard:' + tabId); }
+    async function runWithSuppressedRefresh(task) { return task(); }
+    function discardRestoredTabAfterCommit(tabId) { calls.push('discard:' + tabId); }
+    function muteChromeGroupEvents() {}
+    ${extractFn(runtimeJs, 'openSavedTabsInNewWindow')}
+    ${extractFn(runtimeJs, 'scheduleRestoredSessionBackgroundDiscards')}
+    ${extractFn(runtimeJs, 'restoreChromeGroupsForSession')}
+    ${extractFn(runtimeJs, 'restoreSavedTabSession')}
+    return restoreSavedTabSession;
+  `)(calls, performChromeGroupMutation);
+
+  globalThis.chrome = {
+    windows: {
+      create: async opts => ({ id: 701, tabs: [{ id: 3001, url: opts.url, active: true, windowId: 701 }] }),
+    },
+    tabs: {
+      create: async opts => ({
+        id: opts.url === 'https://b.test' ? 3002 : 3003,
+        url: opts.url,
+        active: !!opts.active,
+        windowId: opts.windowId,
+      }),
+    },
+    tabGroups: {
+      query: async () => [],
+    },
+  };
+
+  try {
+    const restore = fn('session-1');
+    const { operation, payload } = await groupRequest;
+    assert.equal(operation, 'create');
+    assert.deepEqual(payload, {
+      windowId: 701,
+      tabIds: [3001, 3002, 3003],
+      orderedTabIds: [3001, 3002, 3003],
+      title: 'Research',
+      color: 'blue',
+    });
+    assert.deepEqual(calls, ['plan', 'group:start']);
+    finishGroup({ groupId: 910, mergedTabIds: payload.tabIds, updated: true, orderApplied: true });
+
+    const result = await restore;
+    assert.equal(result.restoredCount, 3);
+    assert.equal(result.chromeGroupRestore.restored[0].groupId, 910);
+    assert.deepEqual(result.chromeGroupRestore.failures, []);
+    assert.deepEqual(calls, [
+      'plan',
+      'group:start',
+      'group:finish',
+      'discard:3001',
+      'discard:3002',
+      'discard:3003',
+      'save',
+      'render',
+      'close-dashboard:3001',
+    ]);
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+test('discardRestoredTabAfterCommit uses one state check then waits for a Chrome tab update', async () => {
+  const eventListeners = [];
+  const fn = new Function(`
+    ${extractFn(runtimeJs, 'discardTab')}
+    const RESTORED_TAB_DISCARD_TIMEOUT_MS = 15000;
+    const RESTORED_TAB_DISCARD_RETRY_MS = 1000;
+    const restoredTabDiscardQueue = new Map();
+    let restoredTabDiscardDeadlineTimer = null;
+    let restoredTabDiscardListenersAttached = false;
+    ${extractFn(runtimeJs, 'getRestoredTabNavigationIdentity')}
+    ${extractFn(runtimeJs, 'isWebNavigationUrl')}
+    ${extractFn(runtimeJs, 'isRestoredTabNavigationReady')}
+    ${extractFn(runtimeJs, 'removeRestoredTabDiscard')}
+    ${extractFn(runtimeJs, 'scheduleRestoredTabDiscardDeadline')}
+    ${extractFn(runtimeJs, 'tryDiscardRestoredTabAfterCommit')}
+    ${extractFn(runtimeJs, 'ensureRestoredTabDiscardListeners')}
+    ${extractFn(runtimeJs, 'discardRestoredTabAfterCommit')}
+    return { discardRestoredTabAfterCommit, queue: restoredTabDiscardQueue };
+  `)();
+
+  const discarded = [];
+  let getCalls = 0;
+  globalThis.chrome = {
+    tabs: {
+      get: async () => {
+        getCalls += 1;
+        return { id: 71, url: 'about:blank', status: 'loading' };
+      },
+      discard: async id => { discarded.push(Number(id)); },
+      onUpdated: { addListener: listener => eventListeners.push(listener) },
+      onRemoved: { addListener: () => {} },
+    },
+  };
+
+  try {
+    fn.discardRestoredTabAfterCommit(71, 'https://saved.example/article');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(getCalls, 1, 'only the initial race-closing state check reads the tab');
+    assert.equal(discarded.length, 0);
+    assert.equal(eventListeners.length, 1, 'one shared tabs.onUpdated listener is installed');
+
+    eventListeners[0](71, { url: 'https://redirect.example', status: 'loading' }, {
+      id: 71,
+      url: 'https://redirect.example',
+      status: 'loading',
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discarded, [], 'a still-loading redirect is not discarded prematurely');
+
+    eventListeners[0](71, { status: 'complete' }, {
+      id: 71,
+      url: 'https://redirect.example',
+      status: 'complete',
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discarded, [71], 'the completed redirect is safely discarded');
+    assert.equal(fn.queue.size, 0, 'completed work leaves the shared queue');
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+test('restore discard requests survive a transient Chrome discard failure', async () => {
+  const eventListeners = [];
+  const fn = new Function(`
+    ${extractFn(runtimeJs, 'discardTab')}
+    const RESTORED_TAB_DISCARD_TIMEOUT_MS = 15000;
+    const RESTORED_TAB_DISCARD_RETRY_MS = 1000;
+    const restoredTabDiscardQueue = new Map();
+    let restoredTabDiscardDeadlineTimer = null;
+    let restoredTabDiscardListenersAttached = false;
+    ${extractFn(runtimeJs, 'getRestoredTabNavigationIdentity')}
+    ${extractFn(runtimeJs, 'isWebNavigationUrl')}
+    ${extractFn(runtimeJs, 'isRestoredTabNavigationReady')}
+    ${extractFn(runtimeJs, 'removeRestoredTabDiscard')}
+    ${extractFn(runtimeJs, 'scheduleRestoredTabDiscardDeadline')}
+    ${extractFn(runtimeJs, 'tryDiscardRestoredTabAfterCommit')}
+    ${extractFn(runtimeJs, 'ensureRestoredTabDiscardListeners')}
+    ${extractFn(runtimeJs, 'discardRestoredTabAfterCommit')}
+    return { discardRestoredTabAfterCommit, queue: restoredTabDiscardQueue };
+  `)();
+
+  let attempts = 0;
+  globalThis.chrome = {
+    tabs: {
+      get: async () => ({ id: 72, url: 'https://saved.example/article', status: 'loading', active: false }),
+      discard: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('temporarily busy');
+      },
+      onUpdated: { addListener: listener => eventListeners.push(listener) },
+      onRemoved: { addListener: () => {} },
+    },
+  };
+
+  try {
+    fn.discardRestoredTabAfterCommit(72, 'https://saved.example/article');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(attempts, 1);
+    assert.equal(fn.queue.size, 1, 'a failed discard must remain eligible for retry');
+
+    eventListeners[0](72, { status: 'complete' }, {
+      id: 72,
+      url: 'https://saved.example/article',
+      status: 'complete',
+      active: false,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(attempts, 2);
+    assert.equal(fn.queue.size, 0, 'successful retry removes the pending request');
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+test('a finished error page is never treated as a committed navigation', async () => {
+  const eventListeners = [];
+  const fn = new Function(`
+    ${extractFn(runtimeJs, 'discardTab')}
+    const RESTORED_TAB_DISCARD_TIMEOUT_MS = 15000;
+    const RESTORED_TAB_DISCARD_RETRY_MS = 1000;
+    const restoredTabDiscardQueue = new Map();
+    let restoredTabDiscardDeadlineTimer = null;
+    let restoredTabDiscardListenersAttached = false;
+    ${extractFn(runtimeJs, 'getRestoredTabNavigationIdentity')}
+    ${extractFn(runtimeJs, 'isWebNavigationUrl')}
+    ${extractFn(runtimeJs, 'isRestoredTabNavigationReady')}
+    ${extractFn(runtimeJs, 'removeRestoredTabDiscard')}
+    ${extractFn(runtimeJs, 'scheduleRestoredTabDiscardDeadline')}
+    ${extractFn(runtimeJs, 'tryDiscardRestoredTabAfterCommit')}
+    ${extractFn(runtimeJs, 'ensureRestoredTabDiscardListeners')}
+    ${extractFn(runtimeJs, 'discardRestoredTabAfterCommit')}
+    return { discardRestoredTabAfterCommit, queue: restoredTabDiscardQueue };
+  `)();
+
+  const discarded = [];
+  globalThis.chrome = {
+    tabs: {
+      get: async () => ({ id: 73, url: 'about:blank', status: 'loading', active: false }),
+      discard: async id => { discarded.push(Number(id)); },
+      onUpdated: { addListener: listener => eventListeners.push(listener) },
+      onRemoved: { addListener: () => {} },
+    },
+  };
+
+  try {
+    fn.discardRestoredTabAfterCommit(73, 'https://saved.example/article');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(discarded.length, 0);
+
+    // A failed load lands on the network error page with status 'complete'.
+    // That must not count as a committed destination: the tab holds no
+    // restored content and discarding it can never protect the saved URL.
+    eventListeners[0](73, { status: 'complete' }, {
+      id: 73,
+      url: 'chrome-error://chromewebdata/',
+      status: 'complete',
+      active: false,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discarded, [], 'a finished chrome-error page is not discarded');
+    assert.equal(fn.queue.size, 1, 'the request stays queued for the real navigation');
+
+    // Blocked frames land on about:blank#blocked, also with status complete.
+    eventListeners[0](73, { status: 'complete' }, {
+      id: 73,
+      url: 'about:blank#blocked',
+      status: 'complete',
+      active: false,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discarded, [], 'a finished about:blank#blocked page is not discarded');
+
+    // Once the real page finally commits, the queued request still fires.
+    eventListeners[0](73, { url: 'https://saved.example/article', status: 'complete' }, {
+      id: 73,
+      url: 'https://saved.example/article',
+      status: 'complete',
+      active: false,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discarded, [73], 'the queued request discards once the real page commits');
+    assert.equal(fn.queue.size, 0);
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+test('restoreChromeGroupsForSession reports a metadata half-success without abandoning the native group', async () => {
+  const calls = [];
+  const tabs = [
+    { id: 32, windowId: 9, groupId: -1, index: 4 },
+    { id: 31, windowId: 9, groupId: -1, index: 5 },
+  ];
+  const groups = [];
+  const chrome = {
+    storage: {
+      session: { get: async () => ({}), set: async () => {} },
+      local: { remove: async () => {} },
+    },
+    tabs: {
+      query: async ({ groupId }) => tabs.filter(tab => groupId == null || tab.groupId === groupId),
+      group: async (options) => {
+        calls.push(['group', options]);
+        groups.push({ id: 811, windowId: 9, title: '', color: 'grey' });
+        tabs.forEach(tab => { tab.groupId = 811; });
+        return 811;
+      },
+      ungroup: async () => {},
+      move: async (id, options) => calls.push(['move', id, options]),
+    },
+    tabGroups: {
+      query: async () => groups,
+      update: async (groupId, metadata) => {
+        calls.push(['metadata', groupId, metadata]);
+        throw new Error('name/color denied');
+      },
+    },
+  };
+  const coordinator = createChromeTabGroupsCoordinator({ chromeApi: chrome, logger: { warn: () => {} } });
+  const restore = new Function('chrome', 'coordinator', `
+    const muteChromeGroupEvents = () => {};
+    const sendChromeTabGroupRequest = (_action, payload) => coordinator.merge(payload);
+    const applyChromeTabGroupResponseState = () => {};
+    ${extractFn(runtimeJs, 'performChromeGroupMutation')}
+    ${extractFn(runtimeJs, 'restoreChromeGroupsForSession')}
+    return restoreChromeGroupsForSession;
+  `)(chrome, coordinator);
+
+  const result = await restore([{ title: 'Research', color: 'blue', tabIds: [31, 32] }], 9);
+
+  assert.deepEqual(result, {
+    attempted: 1,
+    restored: [{
+      groupId: 811,
+      title: 'Research',
+      tabIds: [31, 32],
+      metadataApplied: false,
+      orderApplied: true,
+    }],
+    failures: [{
+      stage: 'metadata',
+      groupId: 811,
+      title: 'Research',
+      tabIds: [31, 32],
+    }],
+  });
+  assert.deepEqual(calls, [
+    ['group', { tabIds: [31, 32], createProperties: { windowId: 9 } }],
+    ['metadata', 811, { title: 'Research', color: 'blue' }],
+    ['move', 31, { windowId: 9, index: 4 }],
+    ['move', 32, { windowId: 9, index: 5 }],
+  ]);
+  assert.ok(tabs.every(tab => tab.groupId === 811), 'native group membership is retained');
+});
+
+// @lat: [[features#Dashboard 切换与恢复#切换后关闭 Dashboard]]
+test('focusTab closes only its dashboard after a successful switch', async () => {
+  for (const mode of ['id', 'url', 'missing', 'failed', 'navigated', 'self', 'close-failed', 'uncached']) {
+    const calls = [];
+    const target = { id: mode === 'self' ? 90 : 42, windowId: 7, url: 'https://example.com/' };
+    const chrome = {
+      tabs: {
+        get: async id => {
+          if (id === 90) return { id, url: mode === 'navigated' ? 'https://other.example/' : 'chrome://newtab/' };
+          return target;
+        },
+        update: async id => {
+          calls.push(['activate', id]);
+          if (mode === 'failed') throw new Error('activation failed');
+        },
+        remove: async id => {
+          calls.push(['remove', id]);
+          if (mode === 'close-failed') throw new Error('already closed');
+        },
+      },
+      windows: { update: async id => calls.push(['focus-window', id]) },
+    };
+    const focus = new Function('chrome', 'currentDashboardTabId', `
+      const getTabIdValue = value => value == null ? null : Number(value);
+      const queryTabsForDashboardWindow = async () => ${mode === 'missing' ? '[]' : '[{ id: 42, windowId: 7, url: "https://example.com/" }]'};
+      const runtimeGetCanonicalTabUrl = null;
+      const getTabCanonicalUrl = tab => tab.url;
+      const isTabHarborNewTabUrl = url => url === 'chrome://newtab/';
+      ${extractFn(runtimeJs, 'closeDashboardAfterTabFocus')}
+      ${extractFn(runtimeJs, 'focusTab')}
+      return focusTab;
+    `)(chrome, mode === 'uncached' ? null : 90);
+    const result = focus('https://example.com/', ['url', 'missing'].includes(mode) ? null : target.id);
+    if (mode === 'failed') {
+      await assert.rejects(result, /activation failed/);
+    } else {
+      assert.equal(await result, mode !== 'missing');
+    }
+    const shouldClose = ['id', 'url', 'close-failed'].includes(mode);
+    assert.deepEqual(calls.filter(call => call[0] === 'remove'), shouldClose ? [['remove', 90]] : [], mode);
+    if (shouldClose) assert.deepEqual(calls.slice(0, 2), [['activate', 42], ['focus-window', 7]]);
+  }
+});
+
+// @lat: [[features#Dashboard 切换与恢复#恢复会话后关闭 Dashboard]]
+test('saved session restore closes its originating dashboard only after success in either restore mode', async () => {
+  for (const restoreMode of ['current-window', 'new-window']) {
+    for (const scenario of ['success', 'failed', 'save-failed', 'empty', 'navigated', 'close-failed']) {
+      const calls = [];
+      const chrome = {
+        tabs: {
+          get: async id => ({ id, url: scenario === 'navigated' ? 'https://other.example/' : 'chrome://newtab/' }),
+          remove: async id => {
+            calls.push(['remove', id]);
+            if (scenario === 'close-failed') throw new Error('already closed');
+          },
+        },
+      };
+      const restore = new Function('chrome', 'restoreMode', 'scenario', 'calls', `
+        const currentDashboardTabId = 90;
+        const isTabHarborNewTabUrl = url => url === 'chrome://newtab/';
+        const runtimeGetSavedTabSessions = async () => [{ id: 'saved', tabs: [{ url: 'https://example.com/' }] }];
+        const runtimeGetSavedSessionRestoreMode = () => restoreMode;
+        const runtimeCreateRestoredSessionGroups = () => ({ state: {}, chromeGroupPlans: [] });
+        const sessionGroupsState = {};
+        const runWithSuppressedRefresh = task => task();
+        const open = async mode => {
+          calls.push(['open', mode]);
+          if (scenario === 'failed') throw new Error('restore failed');
+          return { restoredTabs: scenario === 'empty' ? [] : [{ id: 42 }], windowId: 7, backgroundTabDiscards: [] };
+        };
+        const openSavedTabsInCurrentWindow = () => open('current-window');
+        const openSavedTabsInNewWindow = () => open('new-window');
+        const restoreChromeGroupsForSession = async () => { calls.push(['groups']); return {}; };
+        const scheduleRestoredSessionBackgroundDiscards = () => {};
+        const saveSessionGroups = async () => {
+          calls.push(['save']);
+          if (scenario === 'save-failed') throw new Error('save failed');
+        };
+        const renderDashboard = async () => { calls.push(['render']); };
+        ${extractFn(runtimeJs, 'closeDashboardAfterTabFocus')}
+        ${extractFn(runtimeJs, 'restoreSavedTabSession')}
+        return restoreSavedTabSession;
+      `)(chrome, restoreMode, scenario, calls);
+
+      if (['failed', 'save-failed'].includes(scenario)) {
+        await assert.rejects(restore('saved'), /failed/);
+      } else {
+        const result = await restore('saved');
+        assert.equal(result.restoredCount, scenario === 'empty' ? 0 : 1);
+      }
+      assert.deepEqual(calls[0], ['open', restoreMode]);
+      const shouldClose = ['success', 'close-failed'].includes(scenario);
+      assert.deepEqual(calls.filter(call => call[0] === 'remove'), shouldClose ? [['remove', 90]] : [], `${restoreMode}: ${scenario}`);
+      if (shouldClose) {
+        assert.deepEqual(calls.slice(-3), [['save'], ['render'], ['remove', 90]]);
+      }
+    }
+  }
 });

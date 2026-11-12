@@ -265,7 +265,7 @@
     return (cleanHost.slice(0, 2) || '?').toUpperCase();
   }
 
-  function getIconSources({ favIconUrl = '', url = '' } = {}, size = 16) {
+  function getIconSources({ favIconUrl = '', url = '' } = {}, size = 16, { allowExternalFavicon = true } = {}) {
     const hostname = getHostname(url);
     const primaryDomain = getPrimaryDomain(hostname);
     const faviconData = getFaviconUrl({ domain: url, size });
@@ -274,8 +274,8 @@
       isStableIconUrl(favIconUrl) ? favIconUrl : '',
       faviconData.url,
       originFaviconUrl,
-      primaryDomain ? getGoogleFaviconUrl(primaryDomain, size) : '',
-      hostname && hostname !== primaryDomain ? getGoogleFaviconUrl(hostname, size) : '',
+      allowExternalFavicon && primaryDomain ? getGoogleFaviconUrl(primaryDomain, size) : '',
+      allowExternalFavicon && hostname && hostname !== primaryDomain ? getGoogleFaviconUrl(hostname, size) : '',
     ]);
 
     return {

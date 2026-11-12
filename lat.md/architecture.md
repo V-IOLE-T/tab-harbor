@@ -8,6 +8,14 @@ Dashboard 没有 bundler 或 ESM，`extension/index.html` 中的 `<script>` 顺�
 
 `automatic-tab-groups.js` 位于 `tab-url-utils.js` 之后，为 Dashboard 暴露纯策略命名空间。`bookmarks-model.js` 与 `bookmarks-shelf.js` 也使用 IIFE 挂载命名空间，避免顶层绑定冲突。详见 [[features#只读书签镜像]]。
 
+### Dashboard 初始化前应用主题
+
+`theme-palettes.js` 和 `theme-startup.js` 在焦点重定向和工作区脚本之前加载，先应用缓存主题，再读取扩展本地设置，并由运行时同步后续变更。
+
+### 可选字体不阻塞工作区
+
+外部字体样式表先使用 `media="print"` 加载。`app.js` 完成 Dashboard 挂载后再将其切换为屏幕可用。字体网络请求不阻塞标签列表和快捷入口初始化。
+
 ## 共享自动分组策略
 
 `automatic-tab-groups.js` 统一 Dashboard 与 worker 的逻辑组定义、原生组分析和 desired snapshot，且不直接调用 Chrome 写 API。
@@ -30,6 +38,8 @@ Worker 注册阶段只允许同步导入安装包内确定存在的脚本，不�
 
 Coordinator 对 `created` 组比较 live title/color，仅在值变化时调用 `tabGroups.update`；collapsed 仍只在首次创建时写入。无变化时跳过 API 调用，避免产生无意义的自写事件回声。
 
+新建原生组时，自动同步和手动变更都显式指定目标窗口，避免 Chrome 把成员移动到当前焦点窗口。恢复会话时，已创建的组保留 ID，外观或顺序写入失败分别回报。
+
 Coordinator 在排队操作真正执行时重新读取 `chromeTabGroupsEnabled`。已经过时的启用请求不得写入；已关闭的设置会被提升为全窗口清理，并在首个变更前完成所有仍存活窗口的读取。
 
 Background 还监听该设置从启用变为关闭，并在提交全窗口清理前写入内部 local 标记 `chromeTabGroupsCleanupPending=true`。成功后才清除标记；失败按上限 30 秒退避重试，worker 启动、安装或后续 disabled 标签事件会读取标记续做，因此 Dashboard 不是唯一清理执行机会。
@@ -39,6 +49,8 @@ Background 还监听该设置从启用变为关闭，并在提交全窗口清理
 自动标签组无需 Dashboard 常驻；service worker 按窗口吸收普通 tabs 事件，并在完整 live 读取成功后才提交 desired snapshot。
 
 启动、安装/升级、同步开关启用，以及 tabs created/updated/removed/replaced/moved/attached/detached 会安排相关窗口同步。`onUpdated` 只处理 URL、groupId 或 pinned 变化，窗口关闭中的 remove 不安排。
+
+标签被替换时，worker 清理旧标签的去重宽限记录，将新旧标签 ID 和可用的窗口 ID 一并广播。若新标签查询失败，后台从仍存活的窗口补做同步。
 
 每个窗口独立 **275ms debounce**。运行前的 burst 合并为一次完整快照；运行中事件标记 dirty，并在本轮结束后至多安排一轮 trailing debounce。不同窗口的最终写入仍由 coordinator 全局串行。
 

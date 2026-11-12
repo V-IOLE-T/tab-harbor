@@ -11,6 +11,10 @@ const GROUP_ORDER_KEY = 'groupOrder';
 const GROUP_TAB_ORDER_KEY = 'groupTabOrder';
 const GROUP_LABEL_OVERRIDES_KEY = 'groupLabelOverrides';
 const POPUP_VIEW_KEY = 'popupView';
+// The dashboard's domain-to-Chrome mirror ids are runtime-only. Popup needs
+// the same boundary when deciding whether a tab belongs to a user-created
+// native group card or to an automatic domain card.
+const CHROME_GROUP_SESSION_MAP_KEY = 'chromeTabGroupsSessionMap';
 
 const popupState = {
   view: 'shortcuts',
@@ -20,6 +24,8 @@ const popupState = {
   groupOrder: { sessionOrder: [], pinnedOrder: [], pinEnabled: false },
   groupTabOrder: {},
   groupLabelOverrides: {},
+  chromeGroupsById: {},
+  managedChromeGroupIds: new Set(),
 };
 
 // Resolve the remembered view synchronously (localStorage is sync) so the
@@ -55,6 +61,8 @@ globalThis._resetPopupState = () => {
   popupState.groupOrder = { sessionOrder: [], pinnedOrder: [], pinEnabled: false };
   popupState.groupTabOrder = {};
   popupState.groupLabelOverrides = {};
+  popupState.chromeGroupsById = {};
+  popupState.managedChromeGroupIds = new Set();
   popupState.quickShortcuts = [];
 };
 globalThis._skipLoadPopupState = false;
@@ -241,13 +249,18 @@ async function loadPopupState() {
   const parseSuspendedUrl = popupUrlUtils.parseSuspendedTabUrl || (() => ({ isSuspended: false, originalUrl: '', title: '' }));
   const canonicalizeUrl = popupUrlUtils.getCanonicalTabUrl || (url => String(url || ''));
 
-  const [quickShortcuts, tabs, sgResult, goResult, groupTabOrderResult, labelOverridesResult] = await Promise.all([
+  const sessionStorage = chrome?.storage?.session;
+  const [quickShortcuts, tabs, sgResult, goResult, groupTabOrderResult, labelOverridesResult, chromeGroups, chromeGroupMapResult] = await Promise.all([
     typeof shortcutsGetter === 'function' ? shortcutsGetter() : Promise.resolve([]),
     chrome.tabs.query({}),
     chrome.storage.local.get(SESSION_GROUPS_KEY),
     chrome.storage.local.get(GROUP_ORDER_KEY),
     chrome.storage.local.get(GROUP_TAB_ORDER_KEY),
     chrome.storage.local.get(GROUP_LABEL_OVERRIDES_KEY),
+    typeof chrome.tabGroups?.query === 'function' ? chrome.tabGroups.query({}).catch(() => []) : Promise.resolve([]),
+    typeof sessionStorage?.get === 'function'
+      ? sessionStorage.get(CHROME_GROUP_SESSION_MAP_KEY).catch(() => ({}))
+      : Promise.resolve({}),
   ]);
 
   popupState.quickShortcuts = Array.isArray(quickShortcuts) ? quickShortcuts : [];
@@ -270,10 +283,22 @@ async function loadPopupState() {
       title: suspended.title || tab.title || '',
       favIconUrl: tab.favIconUrl || '',
       windowId: tab.windowId,
+      index: tab.index,
       active: Boolean(tab.active),
       groupId: tab.groupId,
     };
   });
+
+  popupState.chromeGroupsById = Object.fromEntries((Array.isArray(chromeGroups) ? chromeGroups : [])
+    .filter(group => Number.isFinite(Number(group?.id)))
+    .map(group => [Number(group.id), group]));
+  const storedChromeGroupMap = chromeGroupMapResult?.[CHROME_GROUP_SESSION_MAP_KEY];
+  popupState.managedChromeGroupIds = new Set(
+    Object.values(storedChromeGroupMap && typeof storedChromeGroupMap === 'object' ? storedChromeGroupMap : {})
+      .flatMap(windowMap => Object.values(windowMap && typeof windowMap === 'object' ? windowMap : []))
+      .map(Number)
+      .filter(Number.isFinite)
+  );
 
   popupState.groupLabelOverrides = normalizeGroupLabelOverrides(labelOverridesResult[GROUP_LABEL_OVERRIDES_KEY]);
 
@@ -286,7 +311,7 @@ async function loadPopupState() {
 }
 
 function buildPopupTabGroups() {
-  const { openTabs, sessionGroups, groupOrder } = popupState;
+  const { openTabs, sessionGroups, groupOrder, chromeGroupsById, managedChromeGroupIds } = popupState;
 
   const sessionGroupMap = Object.fromEntries(
     sessionGroups.groups.map(group => [
@@ -296,10 +321,37 @@ function buildPopupTabGroups() {
   );
 
   const groupMap = {};
+  const nativeChromeGroupMap = {};
   const landingTabs = [];
   const ungroupedTabs = [];
 
   for (const tab of openTabs) {
+    const nativeGroupId = Number(tab.groupId);
+    const nativeChromeGroup = chromeGroupsById[nativeGroupId];
+    // A live native group is authoritative for Popup just as it is for the
+    // dashboard. Managed mirrors remain domain cards; all other Chrome groups
+    // retain their title/color membership instead of being regrouped by URL.
+    if (Number.isFinite(nativeGroupId) && nativeGroupId >= 0 && nativeChromeGroup && !managedChromeGroupIds.has(nativeGroupId)) {
+      const key = `__chrome_group__:${nativeGroupId}`;
+      if (!nativeChromeGroupMap[key]) {
+        nativeChromeGroupMap[key] = {
+          domain: key,
+          label: String(nativeChromeGroup.title || '').trim() || 'Group',
+          tabs: [],
+          kind: 'chrome-group',
+          chromeGroupId: nativeGroupId,
+          chromeGroupColor: nativeChromeGroup.color,
+          chromePosition: Number.isFinite(Number(tab.index)) ? Number(tab.index) : Number.MAX_SAFE_INTEGER,
+        };
+      }
+      nativeChromeGroupMap[key].tabs.push(tab);
+      nativeChromeGroupMap[key].chromePosition = Math.min(
+        nativeChromeGroupMap[key].chromePosition,
+        Number.isFinite(Number(tab.index)) ? Number(tab.index) : Number.MAX_SAFE_INTEGER
+      );
+      continue;
+    }
+
     const assignedGroupId = sessionGroups.assignments[String(tab.id)];
     if (assignedGroupId && sessionGroupMap[assignedGroupId]) {
       sessionGroupMap[assignedGroupId].tabs.push(tab);
@@ -344,6 +396,13 @@ function buildPopupTabGroups() {
     groupMap['__ungrouped__'] = { domain: '__ungrouped__', label: '__ungrouped__', tabs: ungroupedTabs, kind: 'ungrouped' };
   }
 
+  // chrome.tabs.query({}) can contain more than one window; keep each native
+  // card in its browser-strip order rather than inheriting the global query
+  // order or a persisted dashboard order.
+  for (const group of Object.values(nativeChromeGroupMap)) {
+    group.tabs.sort((a, b) => Number(a.index) - Number(b.index));
+  }
+
   const landingHostnames = new Set(getLandingPatterns().map(p => p.hostname).filter(Boolean));
   const landingSuffixes = getLandingPatterns().map(p => p.hostnameEndsWith).filter(Boolean);
   function isLandingDomain(domain) {
@@ -355,6 +414,9 @@ function buildPopupTabGroups() {
   const sessionGroupsList = Object.values(sessionGroupMap)
     .filter(g => g.tabs.length > 0)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const nativeChromeGroups = Object.values(nativeChromeGroupMap)
+    .filter(group => group.tabs.length > 0)
+    .sort((a, b) => a.chromePosition - b.chromePosition || a.chromeGroupId - b.chromeGroupId);
   const automaticGroups = Object.values(groupMap);
 
   const sortedAutomatic = automaticGroups.sort((a, b) => {
@@ -368,7 +430,9 @@ function buildPopupTabGroups() {
   });
 
   const applyOrderFn = popupGroupOrder.applyGroupOrder;
-  const mergedGroups = [...sessionGroupsList, ...sortedAutomatic];
+  // Keep user-created native group cards first, matching dashboard grouping;
+  // they are session-local and must not be persisted via applyGroupOrder.
+  const mergedGroups = [...nativeChromeGroups, ...sessionGroupsList, ...sortedAutomatic];
   return applyOrderFn ? applyOrderFn(mergedGroups, groupOrder) : mergedGroups;
 }
 

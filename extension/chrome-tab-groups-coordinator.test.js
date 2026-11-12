@@ -305,7 +305,7 @@ test('coalesces queued syncs for one window to the latest snapshot', async () =>
 
   assert.deepEqual(firstResult, secondResult);
   assert.equal(mock.calls.group.length, 1);
-  assert.deepEqual(mock.calls.group[0], { tabIds: [2] });
+  assert.deepEqual(mock.calls.group[0], { tabIds: [2], createProperties: { windowId: 1 } });
   assert.equal(mock.calls.update[0].props.title, 'Latest snapshot');
 });
 
@@ -407,7 +407,7 @@ test('creates and manages a group only when no candidate exists', async () => {
   assert.deepEqual(mock.state.session[SESSION_MAP_KEY], {
     docs: { 1: { groupId: 20, origin: 'created' } },
   });
-  assert.deepEqual(mock.calls.group, [{ tabIds: [1] }]);
+  assert.deepEqual(mock.calls.group, [{ tabIds: [1], createProperties: { windowId: 1 } }]);
   assert.equal(mock.state.tabs[0].groupId, 20, 'tabs.group places the tab in the new native group');
   assert.deepEqual(mock.calls.update, [{
     groupId: 20,
@@ -448,7 +448,11 @@ test('created groups apply collapsed only at creation and preserve later user ch
 
   assert.equal(reused.ok, true);
   assert.equal(reused.results[0].status, 'reused');
-  assert.deepEqual(mock.calls.group, [{ tabIds: [1] }], 'reuse does not recreate or regroup existing members');
+  assert.deepEqual(
+    mock.calls.group,
+    [{ tabIds: [1], createProperties: { windowId: 1 } }],
+    'reuse does not recreate or regroup existing members'
+  );
   assert.deepEqual(mock.calls.update[1], {
     groupId: 20,
     props: { title: 'Renamed Docs', color: 'yellow' },
@@ -496,7 +500,7 @@ test('moves a drifted tab from a created group into a new domain group in one sy
   });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(mock.calls.group, [{ tabIds: [2] }]);
+  assert.deepEqual(mock.calls.group, [{ tabIds: [2], createProperties: { windowId: 1 } }]);
   assert.equal(mock.state.tabs.find(tab => tab.id === 1).groupId, 10);
   assert.equal(mock.state.tabs.find(tab => tab.id === 2).groupId, 20);
   assert.deepEqual(mock.state.session[SESSION_MAP_KEY], {
@@ -538,7 +542,7 @@ test('automatic snapshot and coordinator converge a created cross-domain navigat
     ['beta.test', [2]],
   ]);
   assert.equal(result.ok, true);
-  assert.deepEqual(mock.calls.group, [{ tabIds: [2] }]);
+  assert.deepEqual(mock.calls.group, [{ tabIds: [2], createProperties: { windowId: 1 } }]);
   assert.equal(mock.state.tabs.find(tab => tab.id === 1).groupId, 10);
   assert.equal(mock.state.tabs.find(tab => tab.id === 2).groupId, 20);
 });
@@ -605,7 +609,7 @@ test('prunes an emptied created source mapping in the same relocation round', as
   });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(mock.calls.group, [{ tabIds: [1] }]);
+  assert.deepEqual(mock.calls.group, [{ tabIds: [1], createProperties: { windowId: 1 } }]);
   assert.equal(mock.state.groups.some(group => group.id === 10), false);
   assert.deepEqual(mock.state.session[SESSION_MAP_KEY], {
     beta: { 1: { groupId: 20, origin: 'created' } },
@@ -888,7 +892,7 @@ test('a failed group query freezes only related logical groups', async () => {
   assert.equal(result.conflicts[0].groupKey, 'work');
   assert.equal(result.conflicts[0].reason, 'group-query-failed');
   assert.equal(result.conflicts[0].candidates[0].queryComplete, false);
-  assert.deepEqual(mock.calls.group, [{ tabIds: [2] }]);
+  assert.deepEqual(mock.calls.group, [{ tabIds: [2], createProperties: { windowId: 1 } }]);
   assert.equal(result.results.find(item => item.groupKey === 'docs').status, 'created');
 });
 
@@ -1282,6 +1286,35 @@ test('manual create mutation validates live tabs and owns the Chrome write in ba
   assert.deepEqual(result.skippedTabIds, [2, 999]);
   assert.deepEqual(mock.calls.group, [{ tabIds: [1], createProperties: { windowId: 4 } }]);
   assert.deepEqual(mock.calls.update, [{ groupId: 100, props: { title: 'Reading', color: 'blue' } }]);
+});
+
+test('create retains the native group id when restoring member order fails', async () => {
+  const mock = createChromeMock({
+    tabs: [
+      { id: 1, windowId: 4, index: 3 },
+      { id: 2, windowId: 4, index: 4 },
+    ],
+  });
+  mock.chromeApi.tabs.move = async () => { throw new Error('tab order failed'); };
+  const coordinator = createChromeTabGroupsCoordinator({
+    chromeApi: mock.chromeApi,
+    logger: { warn() {} },
+  });
+
+  const result = await coordinator.merge({
+    operation: 'create',
+    windowId: 4,
+    tabIds: [1, 2],
+    orderedTabIds: [2, 1],
+    title: 'Reading',
+    color: 'blue',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.groupId, 100);
+  assert.equal(result.updated, true);
+  assert.equal(result.orderApplied, false);
+  assert.deepEqual(result.state.nativeGroups[0].tabIds, [1, 2]);
 });
 
 test('manual join, update, reorder, and ungroup mutations stay serialized in the coordinator', async () => {

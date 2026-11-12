@@ -205,6 +205,56 @@ test('createRestoredSessionGroups chrome plan includes every restored tab sharin
   ]);
 });
 
+test('createRestoredSessionGroups keeps identical URLs in different Chrome groups attached to their saved instances', () => {
+  const restored = createRestoredSessionGroups({
+    existingState: { groups: [], assignments: {} },
+    session: {
+      tabs: [
+        { url: 'https://example.test/article', groupKey: '__chrome_group__:work' },
+        { url: 'https://example.test/article', groupKey: '__chrome_group__:reading' },
+      ],
+      groups: [
+        { key: '__chrome_group__:work', label: 'Work', chromeGroupColor: 'blue', tabUrls: ['https://example.test/article'] },
+        { key: '__chrome_group__:reading', label: 'Reading', chromeGroupColor: 'red', tabUrls: ['https://example.test/article'] },
+      ],
+    },
+    restoredTabs: [
+      { id: 501, url: 'https://example.test/article', sourceIndex: 0 },
+      { id: 502, url: 'https://example.test/article', sourceIndex: 1 },
+    ],
+  });
+
+  assert.deepEqual(restored.chromeGroupPlans, [
+    { title: 'Work', color: 'blue', tabIds: ['501'] },
+    { title: 'Reading', color: 'red', tabIds: ['502'] },
+  ]);
+});
+
+test('createRestoredSessionGroups keeps repeated identical URLs in one manual group', () => {
+  const restored = createRestoredSessionGroups({
+    existingState: { groups: [], assignments: {} },
+    session: {
+      tabs: [
+        { url: 'https://example.test/article', groupKey: '__session_group__:research' },
+        { url: 'https://example.test/article', groupKey: '__session_group__:research' },
+      ],
+      groups: [
+        { key: '__session_group__:research', label: 'Research', manualGroupId: 'research', tabUrls: ['https://example.test/article', 'https://example.test/article'] },
+      ],
+    },
+    restoredTabs: [
+      { id: 601, url: 'https://example.test/article', sourceIndex: 0 },
+      { id: 602, url: 'https://example.test/article', sourceIndex: 1 },
+    ],
+    now: '2026-08-17T00:00:00.000Z',
+  });
+
+  assert.equal(restored.state.groups.length, 1);
+  const groupId = restored.state.groups[0].id;
+  assert.equal(restored.state.assignments['601'], groupId);
+  assert.equal(restored.state.assignments['602'], groupId);
+});
+
 test('chrome group colors survive the save to reload storage round-trip', async () => {
   const store = {};
   global.chrome = {

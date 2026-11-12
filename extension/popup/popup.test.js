@@ -7,7 +7,10 @@ const assert = require('node:assert/strict');
 globalThis.chrome = {
   tabs: { query: async () => [] },
   tabGroups: { query: async () => [] },
-  storage: { local: { get: async () => ({}) } },
+  storage: {
+    local: { get: async () => ({}) },
+    session: { get: async () => ({}) },
+  },
 };
 
 // Mock DOM globals before requiring popup.js
@@ -467,6 +470,36 @@ test('buildPopupTabGroups groups session-assigned tabs', () => {
   assert.ok(sessionGroup, 'session group should exist');
   assert.equal(sessionGroup.tabs.length, 1);
   assert.equal(sessionGroup.tabs[0].id, 1);
+});
+
+test('buildPopupTabGroups keeps an unmanaged native Chrome group intact before URL grouping', () => {
+  resetPopupTestState({ landingPatterns: [] });
+  globalThis.popupState.openTabs = [
+    { id: 1, url: 'https://github.com/issues', title: 'Issues', windowId: 1, index: 4, active: false, groupId: 55 },
+    { id: 2, url: 'https://docs.example.com/guide', title: 'Guide', windowId: 1, index: 2, active: false, groupId: 55 },
+    { id: 3, url: 'https://github.com/pulls', title: 'Pulls', windowId: 1, index: 5, active: false, groupId: 66 },
+  ];
+  globalThis.popupState.chromeGroupsById = {
+    55: { id: 55, title: 'Research', color: 'blue', windowId: 1 },
+    66: { id: 66, title: 'Managed mirror', color: 'grey', windowId: 1 },
+  };
+  globalThis.popupState.managedChromeGroupIds = new Set([66]);
+
+  const groups = globalThis.buildPopupTabGroups();
+  const nativeGroup = groups.find(group => group.kind === 'chrome-group');
+  assert.deepEqual(nativeGroup && {
+    domain: nativeGroup.domain,
+    label: nativeGroup.label,
+    color: nativeGroup.chromeGroupColor,
+    tabIds: nativeGroup.tabs.map(tab => tab.id),
+  }, {
+    domain: '__chrome_group__:55',
+    label: 'Research',
+    color: 'blue',
+    tabIds: [2, 1],
+  });
+  assert.equal(groups.filter(group => group.kind === 'chrome-group').length, 1, 'managed mirrors do not masquerade as user groups');
+  assert.ok(groups.some(group => group.domain === 'github.com'), 'managed mirror continues through normal domain grouping');
 });
 
 test('buildPopupTabGroups orders session groups by createdAt like the dashboard', () => {
