@@ -6,7 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tab Harbor</title>
 
-  <!-- Apply the startup palette before the focus redirect and screen styles. -->
+  <!-- Apply the startup palette before the focus redirect and screen styles.
+       theme-math.js must precede theme-startup.js: startup material (glass)
+       and wallpaper-cache validation live there. -->
+  <script src="theme-math.js"></script>
   <script src="theme-palettes.js"></script>
   <script src="theme-startup.js"></script>
 
@@ -369,6 +372,15 @@
   <script src="search-suggestions.js"></script>
   <script src="tab-sessions.js"></script>
   <script src="session-manager.js"></script>
+  <!-- Wallpaper stack: vendored Material Color Utilities → Monet extraction →
+       video validation/player → IndexedDB store → wallpaper runtime. These
+       must load before theme-controls.js so applyThemePreferences can reach
+       TabHarborWallpaperRuntime and dashboard-runtime can reach the limits. -->
+  <script src="vendor/material-color-utilities.js"></script>
+  <script src="monet-theme.js"></script>
+  <script src="video-wallpaper.js"></script>
+  <script src="video-wallpaper-store.js"></script>
+  <script src="wallpaper-runtime.js"></script>
   <script src="theme-controls.js"></script>
   <script src="config-sync.js"></script>
   <script src="drawer-manager.js"></script>

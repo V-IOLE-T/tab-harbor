@@ -9,7 +9,7 @@ const appEntryJs = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const backgroundJs = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 const chromeImportJs = fs.readFileSync(path.join(__dirname, 'chrome-tab-groups-import.js'), 'utf8');
 const runtimeJs = fs.readFileSync(path.join(__dirname, 'dashboard-runtime.js'), 'utf8');
-const themeJs = ['theme-palettes.js', 'theme-controls.js']
+const themeJs = ['theme-math.js', 'theme-palettes.js', 'theme-controls.js']
   .map(file => fs.readFileSync(path.join(__dirname, file), 'utf8')).join('\n');
 const drawerJs = fs.readFileSync(path.join(__dirname, 'drawer-manager.js'), 'utf8');
 const helperJs = fs.readFileSync(path.join(__dirname, 'ui-helpers.js'), 'utf8');
@@ -501,7 +501,7 @@ test('back-to-top button styles and behavior are wired up', () => {
   assert.match(css, /\.back-to-top\.visible\s*\{/);
   assert.match(css, /\.back-to-top\s*\{[\s\S]*border-radius:\s*999px;/);
   assert.match(css, /\.back-to-top\s*\{[\s\S]*var\(--floating-surface-opacity\)/);
-  assert.match(css, /\.back-to-top\s*\{[\s\S]*backdrop-filter:\s*blur\(10px\)/);
+  assert.match(css, /\.back-to-top\s*\{[\s\S]*backdrop-filter:\s*blur\(var\(--glass-blur\)\)/);
   assert.match(appJs, /window\.scrollTo\(\{\s*top:\s*0,\s*behavior:\s*prefersReducedMotion\(\) \? 'auto' : 'smooth'/);
   assert.match(appJs, /document\.getElementById\('backToTopBtn'\)/);
 });
@@ -573,7 +573,8 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.theme-range\s*\{/);
   assert.match(css, /\.theme-option\.is-active\s*\{/);
   assert.match(css, /\.header-theme-trigger\s*\{[\s\S]*background:\s*transparent;/);
-  assert.match(themeJs, /body\.style\.backgroundImage = `linear-gradient/);
+  assert.match(themeJs, /body\.style\.backgroundImage = `url/);
+  assert.doesNotMatch(themeJs, /body\.style\.backgroundImage = `linear-gradient/);
   assert.match(themeJs, /body\.classList\.add\('has-custom-background'\)/);
   assert.match(themeJs, /body\.classList\.remove\('has-custom-background'\)/);
   assert.match(themeJs, /hexToRgbChannels/);
@@ -654,7 +655,7 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(themeJs, /'--workspace-accent-soft':/);
   assert.match(themeJs, /'--workspace-accent-border':/);
   assert.match(themeJs, /'--workspace-accent-contrast':/);
-  assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+calc\(var\(--custom-surface-opacity\)\s*\+\s*68%\),\s*transparent\s*\);/);
+  assert.match(css, /\.mission-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--glass-frosted-fill,\s*calc\(var\(--custom-surface-opacity\)\s*\+\s*68%\s*\*\s*var\(--glass-surface-scale\)\)\),\s*transparent\s*\);/);
   assert.match(css, /\.section-count\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);
   assert.match(css, /\.group-nav-button\s*\{[\s\S]*width:\s*40px;[\s\S]*height:\s*40px;/);
   assert.match(css, /\.group-nav-button::after\s*\{[\s\S]*background:\s*var\(--tooltip-surface\);[\s\S]*color:\s*var\(--tooltip-text\);[\s\S]*border:\s*1px solid var\(--tooltip-border\);/);
@@ -663,13 +664,13 @@ test('theme menu styles and custom background layer are defined', () => {
   assert.match(css, /\.tab-cleanup-btn\s*\{[\s\S]*border-radius:\s*999px;/);
   assert.match(css, /\.tab-cleanup-btn:hover\s*\{[\s\S]*background:\s*var\(--banner-action-bg-hover\);/);
   assert.match(css, /\.duplicate-count-action\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border:\s*1px solid var\(--workspace-chip-border\);/);
-  assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--workspace-chip-bg\)\s+92%,\s*var\(--card-bg\)\s+8%\s*\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
+  assert.match(css, /\.action-btn\.close-tabs\s*\{[\s\S]*border-color:\s*var\(--workspace-chip-border\);[\s\S]*color:\s*var\(--workspace-chip-text\);[\s\S]*background:\s*color-mix\(in srgb, color-mix\(\s*in\s+srgb,\s*var\(--workspace-chip-bg\)\s+92%,\s*var\(--card-bg\)\s+8%\s*\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);[\s\S]*border-radius:\s*8px;[\s\S]*min-height:\s*28px;/);
   assert.match(css, /\.action-btn\.close-tabs:hover\s*\{[\s\S]*background:\s*var\(--workspace-chip-bg-strong\);[\s\S]*border-color:\s*var\(--workspace-accent-border\);/);
-  assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--panel-card-opacity\),\s*transparent\s*\);/);
-  assert.match(css, /--tooltip-surface:\s*color-mix\(\s*in\s+srgb,\s*var\(--workspace-accent-soft\)\s+32%,\s*var\(--card-bg\)\s+68%\s*\);/);
+  assert.match(css, /\.deferred-shell\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+var\(--glass-frosted-fill,\s*var\(--panel-card-opacity\)\),\s*transparent\s*\);/);
+  assert.match(css, /--tooltip-surface:\s*color-mix\(in srgb, color-mix\(\s*in\s+srgb,\s*var\(--workspace-accent-soft\)\s+32%,\s*var\(--card-bg\)\s+68%\s*\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);/);
   assert.match(css, /\.drawer-title-btn\.is-active,\s*\.drawer-title-btn\[aria-selected="true"\]\s*\{[\s\S]*text-decoration-color:\s*var\(--drawer-tab-underline-active\);/);
   assert.match(css, /\.archive-clear-btn\s*\{[\s\S]*color:\s*var\(--workspace-chip-text\);/);
-  assert.match(css, /\.todo-detail-card\s*\{[\s\S]*background:\s*color-mix\(\s*in\s+srgb,\s*var\(--card-bg\)\s+96%,\s*var\(--paper\)\s+4%\s*\);/);
+  assert.match(css, /\.todo-detail-card\s*\{[\s\S]*background:\s*color-mix\(in srgb, color-mix\(in srgb, var\(--card-bg\) 96%, var\(--paper\) 4%\) calc\(100% \* var\(--glass-control-scale\)\), transparent\);/);
   // Image handling anchors: the compress path is kept and the legacy
   // readFileAsDataUrl path must stay gone.
   assert.match(appJs, /compressImageFileForStorage/);
@@ -1085,7 +1086,7 @@ test('interactive controls keep button semantics and reduced-motion support', ()
 
   assert.match(themeJs, /class="quick-shortcut-open" type="button"/);
   assert.match(themeJs, /class="quick-shortcut-remove" type="button"/);
-  assert.match(themeJs, /aria-pressed="\$\{themePreferences\.paletteId === id\}"/);
+  assert.match(themeJs, /aria-pressed="\$\{isActive\}"/);
   assert.match(themeJs, /aria-pressed="\$\{themePreferences\.mode === id\}"/);
   assert.match(themeJs, /function prefersReducedMotion\(\)/);
   assert.match(appJs, /behavior:\s*prefersReducedMotion\(\) \? 'auto' : 'smooth'/);
@@ -1184,7 +1185,7 @@ test('quick shortcuts default to a new active tab and can opt into the current t
   assert.match(runtimeJs, /saveThemePreferences\(\{\s*quickShortcutOpenMode: nextMode\s*\}\)/);
   assert.match(runtimeJs, /toggleSwitch\.classList\.toggle\('is-active', nextMode === 'current-tab'\)/);
   assert.match(runtimeJs, /toggleSwitch\.setAttribute\('aria-pressed', String\(nextMode === 'current-tab'\)\)/);
-  assert.match(themeJs, /globalThis\.TabOutThemeControls = \{\s*SEARCH_ENGINE_PRESETS,\s*buildSearchUrlForQuery,\s*filterRealTabs,\s*getCustomSearchUrl,\s*getQuickShortcutCols,\s*getQuickShortcutOpenMode,/);
+  assert.match(themeJs, /globalThis\.TabOutThemeControls = \{[\s\S]*SEARCH_ENGINE_PRESETS,[\s\S]*buildSearchUrlForQuery,\s*filterRealTabs,\s*getCustomSearchUrl,\s*getQuickShortcutCols,\s*getQuickShortcutOpenMode,/);
   assert.match(i18nJs, /quickShortcutOpenModeLabel: 'Open quick links in current tab'/);
   assert.match(i18nJs, /quickShortcutOpenModeLabel: '在当前标签页打开快捷链接'/);
 });
@@ -1195,14 +1196,14 @@ test('quick links per row can be fixed to 4 or 5 columns in landscape only', () 
   assert.match(themeJs, /quickShortcutCols:\s*'auto'/);
   assert.match(themeJs, /quickShortcutCols: VALID_QUICK_SHORTCUT_COLS\.has\(rawQuickShortcutCols\) \? rawQuickShortcutCols : 'auto'/);
   // applyThemePreferences pins the grid class from the saved preference.
-  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-4', themePreferences\.quickShortcutCols === '4'\)/);
-  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-5', themePreferences\.quickShortcutCols === '5'\)/);
+  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-4', normalized\.quickShortcutCols === '4'\)/);
+  assert.match(themeJs, /quickTabsList\.classList\.toggle\('is-fixed-cols-5', normalized\.quickShortcutCols === '5'\)/);
   // Landscape (>=961px) applies fixed tracks; portrait keeps auto-fill.
   assert.match(css, /@media \(min-width: 961px\)[\s\S]*\.quick-tabs-grid\.is-fixed-cols-4 \{\s*grid-template-columns: repeat\(4, 1fr\);[\s\S]*\.quick-tabs-grid\.is-fixed-cols-5 \{\s*grid-template-columns: repeat\(5, 1fr\);[\s\S]*\.quick-tabs-grid\.is-fixed-cols-4 \.quick-shortcut-card,[\s\S]*\.quick-tabs-grid\.is-fixed-cols-5 \.quick-shortcut-card \{\s*width: 100%;/);
   // The fixed rules must NOT leak into the portrait (max-width: 960px) block —
   // scan the whole block, not just its head.
   const portraitStart = css.indexOf('@media (max-width: 960px)');
-  const portraitEnd = css.indexOf('@media (prefers-reduced-motion');
+  const portraitEnd = css.indexOf('@media (prefers-reduced-motion', portraitStart);
   const portraitBlock = portraitStart >= 0 && portraitEnd > portraitStart
     ? css.slice(portraitStart, portraitEnd)
     : '';

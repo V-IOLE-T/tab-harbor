@@ -21,6 +21,7 @@ globalThis.window = {
   }),
 };
 
+require('./theme-math.js');
 require('./theme-palettes.js');
 require('./theme-controls.js');
 
@@ -343,4 +344,27 @@ test('normalizeQuickShortcuts normalizes icon URL to image kind', () => {
   const result = normalizeQuickShortcuts(input);
   assert.equal(result[0].iconKind, 'image');
   assert.equal(result[0].icon, 'https://ex.com/f.png');
+});
+
+
+test('overlay migration is stable after normalized preferences are saved', () => {
+  const legacy = normalizeThemePreferences({customBackground:'image', material:'clear', materialIntensity:50});
+  assert.equal(legacy.wallpaperOverlay, 48);
+  assert.ok(legacy.wallpaperOverlayTint > 37 && legacy.wallpaperOverlayTint < 38);
+  const changed = normalizeThemePreferences({...legacy, materialIntensity:100, backgroundType:'video'});
+  assert.equal(changed.wallpaperOverlay, legacy.wallpaperOverlay);
+  assert.equal(changed.wallpaperOverlayTint, legacy.wallpaperOverlayTint);
+  assert.equal(normalizeThemePreferences({...changed,wallpaperOverlay:0}).wallpaperOverlay,0);
+  assert.deepEqual(normalizeThemePreferences(changed),changed);
+});
+
+
+test('legacy overlay migration resolves system dark mode before it is saved', () => {
+  const original=window.matchMedia;
+  window.matchMedia=()=>({matches:true});
+  try {
+    const prefs=normalizeThemePreferences({mode:'system',backgroundType:'image',material:'clear',materialIntensity:50});
+    assert.equal(prefs.wallpaperOverlay,37);
+    assert.ok(prefs.wallpaperOverlayTint > 59 && prefs.wallpaperOverlayTint < 60);
+  } finally { window.matchMedia=original; }
 });

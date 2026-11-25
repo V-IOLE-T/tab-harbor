@@ -53,6 +53,8 @@ Tab Harbor also works as a tiny action layer: jot down todos, keep short descrip
 
 When you want the page to feel more like your own workspace, you can **switch themes, tune transparency, adjust text and shortcut size, and use a custom background image**. In **Desk settings → Features** you can choose the **search engine** for the search bar (browser default, Google, Bing, Baidu, Sogou, DuckDuckGo, Brave, Yandex, or a custom URL), and whether clicking a quick link **on the new-tab page** opens it in a **new tab** or in the **current tab**; in **Desk settings → Appearance** you can fix quick links to **4 or 5 columns per row** (portrait stays automatic) so every link keeps its place.
 
+Appearance also offers **local wallpaper colors**, adjustable seed hue, **Default/Frosted/Clear materials**, and **muted looping video backgrounds**. Videos stay in local IndexedDB; configuration backups carry only metadata and a poster, so restoring one asks you to re-upload the video. Reduced motion uses the poster. See the [wallpaper guide, limits and verification commands](docs/wallpaper-themes.md).
+
 ### Search with a head start
 
 The search field focuses itself whenever the Tab Harbor tab comes to the front, so "new tab → type → Enter" needs no click. Once you start typing, inline suggestions appear drawn from **open tabs, quick links, saved sessions, and your recent history** — pick an open tab to switch to it (Ctrl/Cmd-click opens a duplicate in a new tab), or pick any other suggestion to open it in a new tab. Keyboard arrows, Enter, and Escape work as expected. The panel stays quiet until you type, so the desk never shouts at you.

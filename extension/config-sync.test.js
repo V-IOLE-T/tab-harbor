@@ -190,6 +190,32 @@ test('importConfig writes the complete configuration to storage', async () => {
   });
 });
 
+test('video backup contains poster and metadata but no device-local media identity', async () => {
+  const theme = { backgroundType: 'video', videoPoster: 'data:image/webp;base64,AA==',
+    videoMeta: { resourceId: 'local-only', name: 'clip.webm', size: 123, savedAt: 'today' },
+    videoBlob: 'must-not-export', videoUrl: 'blob:local-only' };
+  await withMockStorage({ themePreferences: theme }, async (store) => {
+    const exported = JSON.parse(await exportConfig()).themePreferences;
+    assert.equal(exported.videoMeta.name, 'clip.webm');
+    assert.equal(exported.videoMeta.resourceId, undefined);
+    assert.equal(exported.videoPoster, theme.videoPoster);
+    assert.equal(exported.videoBlob, undefined);
+    assert.equal(exported.videoUrl, undefined);
+    assert.equal(store.themePreferences.videoMeta.resourceId, 'local-only');
+  });
+});
+
+test('video import strips even an older backup identity instead of playing a matching local video', async () => {
+  await withMockStorage({}, async (store) => {
+    await importConfig(JSON.stringify({ themePreferences: { backgroundType: 'video',
+      videoPoster: 'poster', videoMeta: { resourceId: 'current-local', name: 'backup.webm' } } }));
+    assert.equal(store.themePreferences.backgroundType, 'video');
+    assert.equal(store.themePreferences.videoPoster, 'poster');
+    assert.equal(store.themePreferences.videoMeta.name, 'backup.webm');
+    assert.equal(store.themePreferences.videoMeta.resourceId, undefined);
+  });
+});
+
 test('importConfig rejects invalid JSON', async () => {
   await withMockStorage({}, async () => {
     await assert.rejects(
