@@ -802,9 +802,9 @@ test('duplicate cleanup is one visible text button beside the group title', () =
   assert.match(runtimeJs, /const dupeBadge = hasDupes\s+\? `<button class="duplicate-count-action" type="button" data-action="dedup-keep-one"/);
   assert.match(runtimeJs, /const dedupButton = '';/);
   // The merge action is hidden on cards that already ARE a Chrome group.
-  assert.match(runtimeJs, /const mergeGroupButton = group\.isChromeGroup \? '' : `\s*<button class="group-action-icon" type="button" data-action="group-card-tabs" data-domain-id="\$\{stableId\}" aria-label="\$\{runtimeT \? runtimeT\('groupCardTabsLabel'\)/);
+  assert.match(runtimeJs, /const mergeGroupButton = group\.isChromeGroup \|\| !chromeTabGroupsEnabled \? '' : `\s*<button class="group-action-icon" type="button" data-action="group-card-tabs" data-domain-id="\$\{stableId\}" aria-label="\$\{runtimeT \? runtimeT\('groupCardTabsLabel'\)/);
   // The icon-only header controls keep merge before the optional sleep action.
-  assert.match(runtimeJs, /<div class="mission-actions">\s*\$\{dedupButton\}\s*\$\{mergeGroupButton\}\s*\$\{sleepControlEnabled && hasSleepableTabs \? `/);
+  assert.match(runtimeJs, /<div class="mission-actions">\s*\$\{dedupButton\}\s*\$\{mergeGroupButton\}\s*\$\{sleepControlEnabled && orderedTabs\.length > 0 \? `/);
   // Chrome group cards carry their native group id and color for the bar.
   assert.match(runtimeJs, /class="mission-card domain-card \$\{hasDupes \? 'has-amber-bar' : 'has-neutral-bar'\}\$\{group\.isChromeGroup \? ' chrome-group-card' : ''\}"[\s\S]{0,200}data-chrome-group-id="\$\{group\.chromeGroupId\}"[\s\S]{0,120}--chrome-group-color:\$\{chromeColor\}/);
 });
@@ -816,11 +816,11 @@ test('merge/duplicate actions reuse the icon-button style of sleep/save/close', 
   assert.doesNotMatch(runtimeJs, /data-action="group-card-tabs"[\s\S]{0,120}class="action-btn"/);
 });
 
-test('the group sleep button hides when no tab in the card can be slept', () => {
+test('the group sleep button remains visible but disabled when no tab can be slept', () => {
   // Behavioral: render real cards with the row-level sleep rule mirrored —
   // a row offers sleep only when its tab is awake, background and
-  // materialized, so an all-asleep (or all-active) card loses the header
-  // moon button exactly like its rows lose their own sleep indicators.
+  // materialized; an all-asleep or all-active card retains a disabled header
+  // control so the sleep affordance does not disappear after the operation.
   const fn = new Function(`
     const expandedPageChipGroupKeys = new Set();
     const groupRenameEditorState = null;
@@ -830,8 +830,9 @@ test('the group sleep button hides when no tab in the card can be slept', () => 
     const runtimeEscapeHtml = null;
     const runtimeEscapeHtmlAttribute = null;
     let sleepControlEnabled = true;
+    let chromeTabGroupsEnabled = true;
     const CHROME_GROUP_COLOR_MAP = {};
-    const ICONS = { moon: '<i>moon</i>', archive: '<i>arch</i>', close: '<i>close</i>', mergeGroup: '<i>merge</i>', closeDuplicates: '<i>dedup</i>' };
+    const ICONS = { moon: '<i>moon-outline</i>', moonFilled: '<i>moon-filled</i>', archive: '<i>arch</i>', close: '<i>close</i>', mergeGroup: '<i>merge</i>', closeDuplicates: '<i>dedup</i>' };
     function getStableGroupId(key) { return 'stable-' + key; }
     function getGroupDisplayLabel(group) { return group.label || group.domain; }
     function getOrderedUniqueTabsForGroup(group) { return group.tabs; }
@@ -854,16 +855,32 @@ test('the group sleep button hides when no tab in the card can be slept', () => 
 
   // At least one sleepable tab: the header moon button is present.
   assert.match(cardOf([awake, asleep]), /data-action="sleep-domain-tabs"/);
-  // Every tab asleep: the moon button hides, exactly like the rows' own
-  // sleep indicators do.
-  assert.doesNotMatch(cardOf([asleep, { ...asleep, id: 4 }]), /data-action="sleep-domain-tabs"/);
+  // Every tab asleep: the moon button remains, but cannot be activated.
+  assert.match(cardOf([asleep, { ...asleep, id: 4 }]), /data-action="sleep-domain-tabs"[^>]* disabled/);
   // Active tabs are not sleepable either (same rule as the rows): an
-  // active + asleep card has nothing left to sleep and hides the button.
-  assert.doesNotMatch(cardOf([active, asleep]), /data-action="sleep-domain-tabs"/);
-  // Sleeping rows keep rendering (with the discarded style) when the header
-  // button is hidden.
+  // active + asleep card has nothing left to sleep and disables the button.
+  assert.match(cardOf([active, asleep]), /data-action="sleep-domain-tabs"[^>]* disabled/);
+  // Sleeping rows keep rendering (with a visible discarded style/status).
   const allAsleepCard = cardOf([asleep]);
   assert.match(allAsleepCard, /page-chip--discarded/);
+  assert.match(allAsleepCard, /class="chip-sleep-status"[^>]*><i>moon-filled<\/i>/);
+  assert.match(cardOf([awake]), /data-action="discard-tab"[^>]*>[\s\S]*?<i>moon-outline<\/i>/);
+});
+
+test('Chrome-group merge controls follow the Chrome tab groups setting', () => {
+  const fn = new Function(`
+    const runtimeT = null;
+    const ICONS = { closeDuplicates: 'dedup', mergeGroup: 'merge', moon: 'moon', archive: 'save', close: 'close' };
+    let chromeTabGroupsEnabled = false;
+    let sleepControlEnabled = true;
+    function getRealTabs() { return []; }
+    ${extractFn(runtimeJs, 'buildOpenTabsSectionActions')}
+    return { buildOpenTabsSectionActions, setEnabled: value => { chromeTabGroupsEnabled = value; } };
+  `)();
+
+  assert.doesNotMatch(fn.buildOpenTabsSectionActions(), /data-action="group-card-tabs"/);
+  fn.setEnabled(true);
+  assert.match(fn.buildOpenTabsSectionActions(), /data-action="group-card-tabs"/);
 });
 
 test('per-chip duplicate count badges are not rendered', () => {

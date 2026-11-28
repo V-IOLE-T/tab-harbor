@@ -49,7 +49,8 @@ PR #42 把 close/sleep/dedup/merge 收敛为共享函数，核心模式是 **sta
 
 - `buildBatchMergeGroupTitle(tabIds)`：按选中内容自动命名——最常见域名优先（GitHub/YouTube 品牌大小写白名单），混合组加 `×N`；fallback 到首个标题或 "Selected (N)"。
 - `buildPageChipHtml(tab, group, urlCounts, collapsed)`：所有行统一渲染（占位行、discarded、选中、溢出共用）。
-- 卡片头动作：去重 / 合并 Chrome 组 / 休眠 / 保存会话 / 关闭（`buildOpenTabsSectionActions` 区块级 + 卡片级）。
+- 卡片头动作：去重 / 合并 Chrome 组 / 休眠 / 保存会话 / 关闭（`buildOpenTabsSectionActions` 区块级 + 卡片级）。Chrome 组功能关闭时隐藏所有合并组按钮；休眠功能开启时，非空卡片始终保留休眠按钮，没有可休眠行时置为 disabled。未休眠行用空心月亮作为休眠操作，已休眠行用实心月亮作状态标识。
+- “休眠”调用 Chrome `tabs.discard` 卸载非活动标签页的页面内容，保留标签以便稍后重新加载；操作不承诺 Chrome 进程的系统内存计数会即时下降。
 
 ## 已知注意点
 

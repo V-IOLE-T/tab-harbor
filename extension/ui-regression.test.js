@@ -143,8 +143,14 @@ test('desk settings separates appearance and feature controls', () => {
 });
 
 test('manual sleep control places per-tab moon action first', () => {
-  assert.match(runtimeJs, /function buildPageChipHtml\(tab, group, urlCounts = \{\}, collapsed = false\) \{[\s\S]*<div class="chip-actions">\s*\$\{sleepControlEnabled && !tab\.active && !tab\.discarded && !isPlaceholder \? `<button class="chip-action chip-discard"[\s\S]*<button class="chip-action chip-session-save"/);
+  assert.match(runtimeJs, /function buildPageChipHtml\(tab, group, urlCounts = \{\}, collapsed = false\) \{[\s\S]*<div class="chip-actions">\s*\$\{tab\.discarded \? `<span class="chip-sleep-status"[\s\S]*\$\{sleepControlEnabled && !tab\.active && !tab\.discarded && !isPlaceholder \? `<button class="chip-action chip-discard"[\s\S]*<button class="chip-action chip-session-save"/);
+  assert.match(runtimeJs, /tab\.discarded \? `<span class="chip-sleep-status"[\s\S]*\$\{ICONS\.moonFilled\}/);
   assert.match(runtimeJs, /const pageChips = orderedTabs\.map\(\(tab, index\) => buildPageChipHtml\(tab, group, urlCounts, index >= 8 && !isOverflowExpanded\)\)\.join\(''\)[\s\S]*buildOverflowChips\(extraCount\)/);
+});
+
+test('filled moon icon is solid while the sleep action moon stays outlined', () => {
+  assert.match(helperJs, /moonFilled: `<svg[^`]*fill="currentColor"[^`]*<path[^>]*d="M20\.354 15\.354/);
+  assert.match(helperJs, /moon: `<svg[^`]*fill="none"[^`]*<path[^>]*d="M20\.354 15\.354/);
 });
 
 test('icon-only actions use themed tooltips instead of native title hovers', () => {
@@ -1502,6 +1508,7 @@ test('discard tab supports per-chip, group-level, and global sleep-all with gate
   assert.match(runtimeJs, /data-action="sleep-domain-tabs"/);
   assert.match(runtimeJs, /data-action="sleep-all-open-tabs"/);
   assert.match(runtimeJs, /page-chip--discarded/);
+  assert.match(runtimeJs, /tab\.discarded \? `<span class="chip-sleep-status"/);
   assert.match(runtimeJs, /if \(action === 'discard-tab'\)\s*\{[\s\S]*await fetchOpenTabs\(\);[\s\S]*await renderDashboard\(\);/);
   // Group/global sleep skip already-discarded tabs, so "nothing left to
   // sleep" is a silent no-op instead of a misleading failure toast.

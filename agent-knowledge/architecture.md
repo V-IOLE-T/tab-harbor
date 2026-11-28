@@ -66,6 +66,8 @@ config.js → config-loader.js → icon-utils.js → session-groups.js → group
 - `chromeTabGroupsMeta`（镜像组持久化：windowId → {title,color}）
 - `popupView`（popup 视图偏好，也经 chrome.storage）
 
+Dashboard 中与功能开关相关的卡片操作由同一运行时状态控制：`chromeTabGroupsEnabled` 关闭时不显示合并到 Chrome 标签组的入口；手动休眠启用时，未休眠行使用空心月亮操作，已休眠行使用实心月亮状态标识，组休眠按钮在无可休眠标签时保持可见但禁用。休眠通过 Chrome `tabs.discard` 卸载页面内容，系统级进程内存回收由浏览器管理。
+
 导出/导入用 `config-sync.js` 的 `STORAGE_KEYS` 全量列表。
 
 ## 消息流

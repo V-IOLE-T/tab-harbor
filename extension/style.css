@@ -2337,6 +2337,21 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
     margin-left: auto;
 }
 
+.chip-sleep-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: var(--muted);
+    opacity: 0.8;
+}
+
+.chip-sleep-status svg {
+    width: 13px;
+    height: 13px;
+}
+
 .chip-reorder-handle {
     opacity: 1;
     color: color-mix(in srgb, var(--ink) 84%, var(--muted) 16%);
@@ -2427,6 +2442,11 @@ body.page-chip-list-dragging .page-chip.is-selected:not(.is-dragging) {
         color 0.15s ease,
         opacity 0.15s ease;
     position: relative;
+}
+
+.group-action-icon:disabled {
+    cursor: not-allowed;
+    opacity: 0.42;
 }
 
 .group-action-icon svg {

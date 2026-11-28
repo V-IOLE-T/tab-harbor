@@ -4798,6 +4798,7 @@ function buildPageChipHtml(tab, group, urlCounts = {}, collapsed = false) {
       <span class="chip-favicon chip-favicon-fallback"${faviconUrl ? ' style="display:none"' : ''}>${fallbackLabel}</span>
       <span class="chip-text">${safeLabel}</span>
       <div class="chip-actions">
+        ${tab.discarded ? `<span class="chip-sleep-status" role="img" aria-label="${runtimeT ? runtimeT('tabSleepingStatus') : 'Sleeping'}" title="${runtimeT ? runtimeT('tabSleepingStatus') : 'Sleeping'}">${ICONS.moonFilled}</span>` : ''}
         ${sleepControlEnabled && !tab.active && !tab.discarded && !isPlaceholder ? `<button class="chip-action chip-discard" data-action="discard-tab" data-tab-id="${tab.id}" aria-label="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}" data-tooltip="${runtimeT ? runtimeT('discardTab') : 'Sleep tab'}">
           ${ICONS.moon}
         </button>` : ''}
@@ -4863,10 +4864,8 @@ function renderDomainCard(group) {
   const extraCount  = Math.max(0, orderedTabs.length - 8);
 
   // Mirror the per-row sleep rule (buildPageChipHtml): a row offers sleep
-  // only when its tab is awake, not active and materialized. When no row in
-  // the card can be slept — every tab asleep, active or a placeholder — the
-  // header's "sleep all in group" button is a guaranteed no-op and hides
-  // exactly like the rows' own sleep indicators do.
+  // only when its tab is awake, not active and materialized. Keep the group
+  // action visible while the group has tabs; disable it when none are eligible.
   const hasSleepableTabs = orderedTabs.some(tab =>
     !tab.active && !tab.discarded && !(!tab.url && !tab.title && tab.id != null));
 
@@ -4892,7 +4891,7 @@ function renderDomainCard(group) {
   // group, sleep all in group, save session, close group. All are icon
   // buttons in the same quiet header style (30×30, muted → ink on hover).
   // A card that IS a Chrome group has no "merge into Chrome group" action.
-  const mergeGroupButton = group.isChromeGroup ? '' : `
+  const mergeGroupButton = group.isChromeGroup || !chromeTabGroupsEnabled ? '' : `
     <button class="group-action-icon" type="button" data-action="group-card-tabs" data-domain-id="${stableId}" aria-label="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}" data-tooltip="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}">
       ${ICONS.mergeGroup}
     </button>`;
@@ -4929,8 +4928,8 @@ function renderDomainCard(group) {
           <div class="mission-actions">
             ${dedupButton}
             ${mergeGroupButton}
-            ${sleepControlEnabled && hasSleepableTabs ? `
-            <button class="group-action-icon" type="button" data-action="sleep-domain-tabs" data-domain-id="${stableId}" aria-label="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs in group'}" data-tooltip="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs in group'}">
+            ${sleepControlEnabled && orderedTabs.length > 0 ? `
+            <button class="group-action-icon" type="button" data-action="sleep-domain-tabs" data-domain-id="${stableId}" aria-label="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs in group'}" data-tooltip="${runtimeT ? runtimeT('sleepAllTabsButton') : 'Sleep all tabs in group'}"${hasSleepableTabs ? '' : ' disabled'}>
               ${ICONS.moon}
             </button>` : ''}
             ${saveGroupButton}
@@ -5396,9 +5395,9 @@ function buildOpenTabsSectionActions() {
     ${dupeUrls.length > 0 ? `<button class="section-icon-action" type="button" data-action="dedup-keep-one" data-dupe-urls="${dupeUrlsEncoded}" aria-label="${dedupLabel}" data-tooltip="${dedupLabel}">
       ${ICONS.closeDuplicates}
     </button>` : ''}
-    <button class="section-icon-action" type="button" data-action="group-card-tabs" data-scope="all" aria-label="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}" data-tooltip="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}">
+    ${chromeTabGroupsEnabled ? `<button class="section-icon-action" type="button" data-action="group-card-tabs" data-scope="all" aria-label="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}" data-tooltip="${runtimeT ? runtimeT('groupCardTabsLabel') : 'Merge into Chrome group'}">
       ${ICONS.mergeGroup}
-    </button>
+    </button>` : ''}
     ${sleepControlEnabled ? `<button class="section-icon-action" type="button" data-action="sleep-all-open-tabs" aria-label="${runtimeT ? runtimeT('sleepAllOpenTabsButton') : 'Sleep all tabs'}" data-tooltip="${runtimeT ? runtimeT('sleepAllOpenTabsButton') : 'Sleep all tabs'}">${ICONS.moon}</button>` : ''}
     <button class="section-icon-action" type="button" data-action="save-current-window-session" aria-label="${runtimeT ? runtimeT('saveSessionButton') : 'Save session'}" data-tooltip="${runtimeT ? runtimeT('saveSessionButton') : 'Save session'}">${ICONS.archive}</button>
     <button class="section-icon-action section-icon-action-close" type="button" data-action="close-all-open-tabs" aria-label="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}" data-tooltip="${runtimeT ? runtimeT('closeAllTabsButton') : 'Close all tabs'}">${ICONS.close}</button>`;
